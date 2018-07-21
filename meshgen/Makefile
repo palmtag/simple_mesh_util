@@ -6,11 +6,14 @@ FFLAGS = -O2 -fbacktrace -Wall
 BOUNDS = -fbounds-check
 
 .SUFFIXES :
-.SUFFIXES : .f .f90 .o
+.SUFFIXES : .f90 .o
 
-default: pinmesh.exe
+default: pinmesh.exe square.exe
 
 pinmesh.exe: pinmesh.o Mod_vtklib3.o
+	$(FC) $(FFLAGS) $^ -o $@
+
+square.exe: square.o Mod_vtklib3.o
 	$(FC) $(FFLAGS) $^ -o $@
 
 Mod_vtklib3.o: $(MLIB)/Mod_vtklib3.f90
