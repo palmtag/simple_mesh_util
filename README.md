@@ -10,8 +10,9 @@ meshlib
 * vtk2svg - Program to convert 2D VTK files to SVG files
  
 meshgen
-* pinmesh - program to create simple pincell meshes 
-* square  - program to create simple square meshes 
+* pinmesh  - program to create simple pincell meshes 
+* square   - program to create simple square meshes 
+* triangle - program to create simple triangle meshes 
 
 
 
