@@ -22,7 +22,7 @@
       real(8), allocatable :: xi(:,:)    ! (3,nnode)
       integer, allocatable :: gg(:,:)    ! (iorder,nelem)
 
-      integer, allocatable :: bc(:)      ! (nnode) boundary condition
+      integer, allocatable :: ibc(:)     ! (nnode) boundary condition
       integer, allocatable :: matl(:)    ! (nelem) material number
 
       character(len=100) :: fname='tri1.vtk'
@@ -44,7 +44,7 @@
       allocate (gg(3,jjmax*jjmax))   ! allocation bigger than it has to be
 
       allocate (matl(jjmax*jjmax))
-      allocate (bc(jjmax*jjmax))
+      allocate (ibc(jjmax*jjmax))
 
       matl(:)=1
 
@@ -53,16 +53,16 @@
       nelem=0
       nnode=0
       gg=0
-      bc=0
+      ibc=0
 
-      call build_equilateral(jjmax, xi, gg, nelem, nnode)
+      call build_equilateral(jjmax, xi, gg, ibc, nelem, nnode)
 
       fname='tri1.vtk'
       write (*,'(/,2a)') ' creating vtk file: ', trim(fname)
 
       open (22,file=fname)
       call vtk_tri1(22, nnode, nelem, iorder, xi, gg)
-      call vtk_tri2(22, nnode, bc,    'bc',       'n')  ! nodal data
+      call vtk_tri2(22, nnode, ibc,   'bc',       'n')  ! nodal data
       call vtk_tri2(22, nelem, matl,  'material', 'e')   ! element data
       close (22)
 
@@ -71,16 +71,16 @@
       nelem=0
       nnode=0
       gg=0
-      bc=0
+      ibc=0
 
-      call build_isosceles(jjmax, xi, gg, nelem, nnode)
+      call build_isosceles(jjmax, xi, gg, ibc, nelem, nnode)
 
       fname='tri2.vtk'
       write (*,'(/,2a)') ' creating vtk file: ', trim(fname)
 
       open (22,file=fname)
       call vtk_tri1(22, nnode, nelem, iorder, xi, gg)
-      call vtk_tri2(22, nnode, bc,    'bc',       'n')  ! nodal data
+      call vtk_tri2(22, nnode, ibc,   'bc',       'n')  ! nodal data
       call vtk_tri2(22, nelem, matl,  'material', 'e')   ! element data
       close (22)
 
@@ -89,34 +89,35 @@
       nelem=0
       nnode=0
       gg=0
-      bc=0
+      ibc=0
 
-      call build_306090(jjmax, xi, gg, nelem, nnode)
+      call build_306090(jjmax, xi, gg, ibc, nelem, nnode)
 
       fname='tri3.vtk'
       write (*,'(/,2a)') ' creating vtk file: ', trim(fname)
 
       open (22,file=fname)
       call vtk_tri1(22, nnode, nelem, iorder, xi, gg)
-      call vtk_tri2(22, nnode, bc,    'bc',       'n')  ! nodal data
+      call vtk_tri2(22, nnode, ibc,   'bc',       'n')  ! nodal data
       call vtk_tri2(22, nelem, matl,  'material', 'e')   ! element data
       close (22)
 
 !--- finish
 
       deallocate (xi,gg)
-      deallocate (bc)
+      deallocate (ibc)
       deallocate (matl)
       end
 
 !=======================================================================
-      subroutine build_equilateral(jjmax, xi, gg, nelem, nnode)
+      subroutine build_equilateral(jjmax, xi, gg, ibc, nelem, nnode)
       implicit none
       integer, intent(in)  :: jjmax    ! number of points per side
       integer, intent(out) :: nelem    ! number of elements
       integer, intent(out) :: nnode    ! number of nodes
       real(8), intent(out) :: xi(3,jjmax*jjmax)  ! xyz points
       integer, intent(out) :: gg(3,jjmax*jjmax)  ! element map
+      integer, intent(out) :: ibc(jjmax*jjmax)   ! boundary condition map
 
       integer :: i, j, ii
       real(8) :: delx
@@ -145,6 +146,11 @@
            xi(2,nnode)=y
            xi(3,nnode)=0.0d0
            x=x+delx
+           if (i.eq.1 .or. i.eq.ii .or. j.eq.1) then
+             ibc(nnode)=3
+           else
+             ibc(nnode)=0
+           endif
 
            if (i.lt.ii) then
              nelem=nelem+1
@@ -180,13 +186,14 @@
       end subroutine build_equilateral
 
 !=======================================================================
-      subroutine build_isosceles(jjmax, xi, gg, nelem, nnode)
+      subroutine build_isosceles(jjmax, xi, gg, ibc, nelem, nnode)
       implicit none
       integer, intent(in)  :: jjmax    ! number of points per side
       integer, intent(out) :: nelem    ! number of elements
       integer, intent(out) :: nnode    ! number of nodes
       real(8), intent(out) :: xi(3,jjmax*jjmax)  ! xyz points
       integer, intent(out) :: gg(3,jjmax*jjmax)  ! element map
+      integer, intent(out) :: ibc(jjmax*jjmax)   ! boundary condition map
 
       integer :: i, j, ii
       real(8) :: delx
@@ -214,6 +221,11 @@
            xi(2,nnode)=y
            xi(3,nnode)=0.0d0
            x=x+delx
+           if (i.eq.1 .or. i.eq.ii .or. j.eq.1) then
+             ibc(nnode)=3
+           else
+             ibc(nnode)=0
+           endif
 
            if (i.lt.ii) then
              nelem=nelem+1
@@ -247,13 +259,14 @@
       end subroutine build_isosceles
 
 !=======================================================================
-      subroutine build_306090(jjmax, xi, gg, nelem, nnode)
+      subroutine build_306090(jjmax, xi, gg, ibc, nelem, nnode)
       implicit none
       integer, intent(in)  :: jjmax    ! number of points per side
       integer, intent(out) :: nelem    ! number of elements
       integer, intent(out) :: nnode    ! number of nodes
       real(8), intent(out) :: xi(3,jjmax*jjmax)  ! xyz points
       integer, intent(out) :: gg(3,jjmax*jjmax)  ! element map
+      integer, intent(out) :: ibc(jjmax*jjmax)   ! boundary condition map
 
       integer :: i, j, ii
       real(8) :: delx
@@ -280,6 +293,11 @@
            xi(2,nnode)=y
            xi(3,nnode)=0.0d0
            x=x+delx
+           if (i.eq.1 .or. i.eq.ii .or. j.eq.1) then
+             ibc(nnode)=3
+           else
+             ibc(nnode)=0
+           endif
 
            if (i.lt.ii) then
              nelem=nelem+1
