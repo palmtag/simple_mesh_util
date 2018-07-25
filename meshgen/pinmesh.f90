@@ -7,11 +7,13 @@
 !   Method 1 adds multiple rings of pins to fill out a circle
 !      The difficulty with this method is that each ring must use the same
 !      number of triangles/ring or twice the number of triangles as previous ring
+!      Method1 creates a uniform material
 !
 !   Method 2 defines a hex grid in the center of the problem, then "fills out the circle"
 !      Things to try: Is there space to add more than one hex element?  For each row
 !         check to see how far from boundary (or nearest point on circle)
 !         if greater than some criteria, connect, otherwise add mesh
+!      Method 2 will add an additional ring outside of the hex mesh to represent the clad
 !
 !  Scott Palmtag
 !  August 2012
@@ -21,7 +23,6 @@
 !        nring - number of rings in method1
 !        ndiv  - number of divisions in method2 (must be multiple of 6)
 !
-!
 !  2012/08/23 - method 2 (hex) is working
 !  2012/09/19 - add output to mesh file, add material and mask arrays
 !  2012/09/22 - fixed alignment of triangles in problem 1
@@ -30,6 +31,9 @@
 !             - add automatic method of doubling in method 1
 !  2013/01/19 - modify mask array to be surfaces 1 and 2, instead of just outer boundary
 !             - updated to use new Mod_vtklib3
+!  2018/07/21 - release to Github
+!  2018/07/25 - cleaned up some comments, increased max size of arrays
+!             - added hard max ndiv=96 so mesh doesn't become too skewed between hex and circle
 !
 ! @version CVS $Id: pincell.f90,v 1.30 2018/07/20 22:40:39 scott Exp $
 !
@@ -37,28 +41,26 @@
       use mod_vtklib3
       implicit none
 
-      integer, parameter :: maxnode=5000   ! max node or element
-      integer, parameter :: maxelem=10000   ! max node or element
+!  Define max size of arrays.   This isn't very elegant, but I don't have a good
+!  way to predict the final mesh size beforehand...
 
-      integer :: i
-      integer :: nelem
-      integer :: nnode
+      integer, parameter :: maxnode=10000   ! max number of nodes
+      integer, parameter :: maxelem=20000   ! max number of elements
+
+      integer :: nelem     ! number of elements in mesh
+      integer :: nnode     ! number of nodes in mesh
       integer :: nring     ! number of rings in method 1
-      integer :: ndiv
+      integer :: ndiv      ! number of divisions in method 2
       integer :: gg(3,maxelem)        ! node connections
       integer :: matl(maxelem)        ! element materials
       integer :: msurf(maxnode)       ! surface numbers of each node
       integer :: ringnum(maxnode)     ! node ring number
-      real(8) :: x(maxnode)           ! node coordinates
-      real(8) :: y(maxnode)           ! node coordinates
+      real(8) :: xi(3,maxnode)        !  node coordinates
       real(8) :: elarea(maxelem)      ! element area
-      real(8) :: rpin1, rpin2         ! outer pin radii
+      real(8) :: rpin1, rpin2         ! outer ring radii  rpin2>rpin1
 
-      real(8), allocatable  :: xi(:,:)   ! temp node coordinates
 
       real(8), parameter :: pi=3.1415926535897932384d0
-
-      logical :: ifdebug=.false.
 
       integer :: ia         ! command line
       integer :: ln         ! command line
@@ -68,12 +70,14 @@
       ringnum(:)=0
       matl(:)=-100
       msurf(:)=0
+      xi(:,:)=0.0d0
 
 !--- define problem
 
-      rpin1=19.0d0   ! outer radius (only used in method2)
-      rpin2=20.0d0   ! outer radius
+      rpin1=19.0d0   ! inner ring radius (only used in method2) rpin1 should be about 0.95*rpin2
+      rpin2=20.0d0   ! outer ring radius
       write (*,*) 'pin radii = ', rpin1, rpin2
+      write (*,*) 'clad thickness = ', rpin2-rpin1    ! only used in method 2
 
       nring=8     ! number of rings in method1
       ndiv=48     ! number of divisions in method2 (must be multiple of 6)
@@ -83,91 +87,73 @@
       ia=command_argument_count()
       if (ia.ge.1) then
          call get_command_argument(1,ctemp,ln,istat)
-         read (ctemp,*) ndiv
+         read (ctemp,*) nring
       endif
       if (ia.ge.2) then
          call get_command_argument(2,ctemp,ln,istat)
-         read (ctemp,*) nring
-         write (*,*) 'command line nring = ', nring
+         read (ctemp,*) ndiv
       endif
 
+!--- error check
+
+      if (rpin1.ge.rpin2) stop 'rpin1 must be smaller than rpin2'
+
+      write (*,*) 'nring = ', nring,' (used for method 1)'
+      write (*,*) 'ndiv  = ', ndiv, ' (used for method 2)'
 
 !============== METHOD 1 =====================================
 
+      if (nring.gt.0) then
+
 !--- define pincell mesh with method 1 (rings of triangles)
 
-      call pin_method1(nnode, nelem, nring, rpin2, x, y, gg, elarea, ringnum, matl, msurf, maxnode, maxelem)
+        nnode=0    ! reset
+        nelem=0    ! reset
+
+        call pin_method1(nnode, nelem, nring, rpin2, xi, gg, elarea, ringnum, matl, msurf, maxnode, maxelem)
 
 !--- final edits
 
-      write (*,*)
-      write (*,*) 'final number of nodes    ', nnode
-      write (*,*) 'final number of elements ', nelem
+        write (*,*)
+        write (*,*) 'final number of nodes    ', nnode
+        write (*,*) 'final number of elements ', nelem
  
-      if (ifdebug) then
-        write (*,240)
-        do i=1, nelem
-          write (*,250) i, gg(:,i), elarea(i), ringnum(gg(1,i)), ringnum(gg(2,i)), ringnum(gg(3,i))
-        enddo
-      endif
-  240 format ('    i        gg(3)      area         node_ring(3)')
-  250 format (i6,' -', 3i5, f12.8, 3i6)
-
 !--- create vtk
 
-      allocate (xi(3,nnode))  ! temp array for call to vtklib
-      do i=1, nnode
-         xi(1,i)=x(i)
-         xi(2,i)=y(i)
-         xi(3,i)=0.0d0
-      enddo
+        open (22,file='pin1.vtk')
+        call vtk_tri1(22, nnode, nelem, 3, xi, gg)
+        call vtk_tri2(22, nnode, ringnum, 'ring-number', 'n')
+        call vtk_tri2(22, nnode, msurf,'bc',       ' ')
+        call vtk_tri2(22, nelem, matl, 'material', 'e')
+        close (22)
 
-      open (22,file='pin1.vtk')
-      call vtk_tri1(22, nnode, nelem, 3, xi, gg)
-      call vtk_tri2(22, nnode, ringnum, 'ring-number', 'n')
-      call vtk_tri2(22, nnode, msurf,'bc',       ' ')
-      call vtk_tri2(22, nelem, matl, 'material', 'e')
-      close (22)
-
-      deallocate (xi)
+      endif
 
 !============== METHOD 2 ================================
 
-      nnode=0    ! reset
-      nelem=0    ! reset
+      if (ndiv.gt.0) then
 
-      call pin_method2(ndiv, rpin1, rpin2, nnode, nelem, x, y, gg, elarea, ringnum, matl, msurf, maxnode, maxelem)
+        nnode=0    ! reset
+        nelem=0    ! reset
+
+        call pin_method2(ndiv, rpin1, rpin2, nnode, nelem, xi, gg, elarea, ringnum, matl, msurf, maxnode, maxelem)
 
 !--- final edits
 
-      write (*,*)
-      write (*,*) 'final number of nodes    ', nnode
-      write (*,*) 'final number of elements ', nelem
-
-      if (ifdebug) then
-        write (*,240)
-        do i=1, nelem
-          write (*,250) i, gg(:,i), elarea(i), ringnum(gg(1,i)), ringnum(gg(2,i)), ringnum(gg(3,i))
-        enddo
-      endif
+        write (*,*)
+        write (*,*) 'final number of nodes    ', nnode
+        write (*,*) 'final number of elements ', nelem
 
 !--- create vtk
 
-      allocate (xi(3,nnode))  ! temp array for call to vtklib
-      do i=1, nnode
-         xi(1,i)=x(i)
-         xi(2,i)=y(i)
-         xi(3,i)=0.0d0
-      enddo
+        open (22,file='pin2.vtk')
+        call vtk_tri1(22, nnode, nelem, 3, xi, gg)
+        call vtk_tri2(22, nnode, ringnum, 'row-number', 'n')
+        call vtk_tri2(22, nnode, msurf,'bc',       ' ')
+        call vtk_tri2(22, nelem, matl, 'material', 'e')
+        close (22)
 
-      open (22,file='pin2.vtk')
-      call vtk_tri1(22, nnode, nelem, 3, xi, gg)
-      call vtk_tri2(22, nnode, ringnum, 'row-number', 'n')
-      call vtk_tri2(22, nnode, msurf,'bc',       ' ')
-      call vtk_tri2(22, nelem, matl, 'material', 'e')
-      close (22)
-
-      deallocate (xi)
+      endif
 
       end
 !=======================================================================
@@ -203,11 +189,11 @@
 !   Subroutine to create a mesh using multiple rings of triangles
 !
 !   The limitation to this method is that each ring must use the same
-!   number of points as the last ring, or double the points.
+!   number of points as the last ring, or exactly double the points.
 !   How do we automatically choose whether to double or not?
 !
 !=======================================================================
-      subroutine pin_method1(nnode, nelem, nring, rpin, x, y, &
+      subroutine pin_method1(nnode, nelem, nring, rpin, xi, &
                 gg, elarea, ringnum, matl, msurf, maxnode, maxelem)
       use mod_vtklib3, only : vtk_areatri
       implicit none
@@ -220,8 +206,7 @@
       integer :: nelem           ! number of elements
       integer :: matl(maxelem)   ! element materials
       integer :: msurf(maxnode)  ! boundary conditions
-      real(8) :: x(maxnode)
-      real(8) :: y(maxnode)
+      real(8) :: xi(3,maxnode)
       real(8) :: elarea(maxelem)
       integer :: ringnum(maxnode)
       integer :: gg(3,maxelem)
@@ -251,13 +236,13 @@
 
       nelem=0
       nnode=1
-      x(nnode)=0.0d0
-      y(nnode)=0.0d0
+      xi(1,nnode)=0.0d0
+      xi(2,nnode)=0.0d0
 
-!--- define first ring, 6 triangles
+!--- define first ring, 8 triangles in ring
 
       r2=rdelta
-      ndiv=8        ! was 6
+      ndiv=8
       nr=1          ! ring number
       n1=2          ! starting node on ring
       n2=n1+ndiv-1  ! ending node on ring
@@ -271,13 +256,13 @@
 
       isave=nnode      ! center node number
 
-! zero degrees is to the east, move cc, like a unit circle
+! zero degrees points to the east, move cc, like a unit circle
 
       theta=0.0d0
       do j=1, ndiv
         nnode=nnode+1
-        x(nnode)=rad*cos(theta)
-        y(nnode)=rad*sin(theta)
+        xi(1,nnode)=rad*cos(theta)
+        xi(2,nnode)=rad*sin(theta)
         theta=theta+2.0d0*pi/dble(ndiv)
         ringnum(nnode)=nr
       enddo
@@ -288,9 +273,9 @@
         gg(2,nelem)=isave+i
         gg(3,nelem)=isave+i+1
         if (gg(3,nelem).gt.n2) gg(3,nelem)=gg(3,nelem)-ndiv
-        elarea(nelem)=vtk_areatri(x(gg(1,nelem)),y(gg(1,nelem)), &
-                                  x(gg(2,nelem)),y(gg(2,nelem)), &
-                                  x(gg(3,nelem)),y(gg(3,nelem)))
+        elarea(nelem)=vtk_areatri(xi(1,gg(1,nelem)),xi(2,gg(1,nelem)), &
+                                  xi(1,gg(2,nelem)),xi(2,gg(2,nelem)), &
+                                  xi(1,gg(3,nelem)),xi(2,gg(3,nelem)))
 !x      matl(nelem)=nr
       enddo
 
@@ -298,28 +283,30 @@
 
       hr=2.0d0*pi*r2/ndiv
       write (*,70) nr, ndiv, hr,  hr/rdelta
-  70  format ('ring', i3,'  ndiv=',i3,': hr=', f10.6, 'hr/dr ', f10.6)
+  70  format (' ring', i3,'  ndiv=',i3,': hr=', f10.6, ' hr/dr ', f10.6)
 
 !--- subsequent rings (double the number of points on each ring)
 
       do nr=2, nring
+        write (*,*) '----------------------------------------------'
+        write (*,*) 'add ring ', nr
         r2=nr*rdelta
         npre=ndiv          ! number of divisions on previous ring
         isave=nnode        ! last node on previous ring
         msave=nelem        ! last elem on previous ring
 
         hr=2.0d0*pi*r2/ndiv
-        if (hr/rdelta.gt.0.8d0) then
+        if (hr/rdelta.gt.0.9d0) then
+           write (*,*) 'doubling number of divisions!  ring', nr
+!d         write (*,*) 'rdelta = ', rdelta
+!d         write (*,*) 'old hr = ', hr
+!d         write (*,*) 'hr/rdelta = ', hr/rdelta
            ndiv=2*ndiv     ! double the number of triangles on mesh
            hr=hr*0.5d0
         endif
         write (*,70) nr, ndiv, hr,  hr/rdelta
 
-!!      if (nr.ne.5 .and. nr.ne.7) ndiv=2*ndiv   ! *** set double rings
-!!      if (nr.lt.5) ndiv=2*ndiv                 ! *** set double rings
-        write (*,*) '----------------------------------------------'
-        write (*,*) 'add ring ', nr
-        call addring(ndiv, npre, r2, nnode, nelem, x, y, gg, elarea, maxnode, maxelem)
+        call addring(ndiv, npre, r2, nnode, nelem, xi, gg, elarea, maxnode, maxelem)
 
         do i=isave+1, nnode   ! fill with ring number for now
           ringnum(i)=nr
@@ -342,7 +329,6 @@
 
         call check_area(r2, nelem, elarea)
 
-
       enddo
 
       return
@@ -353,7 +339,7 @@
 !   Add an additional ring of meshes to an existing circular mesh
 !
 !=======================================================================
-      subroutine addring(ndiv, npre, r1, nnode, nelem, x, y, gg, elarea, maxnode, maxelem)
+      subroutine addring(ndiv, npre, r1, nnode, nelem, xi, gg, elarea, maxnode, maxelem)
       use mod_vtklib3, only : vtk_areatri
       implicit none
 
@@ -364,8 +350,7 @@
 
       integer :: nnode   ! number of nodes
       integer :: nelem   ! number of elements
-      real(8) :: x(maxnode)
-      real(8) :: y(maxnode)
+      real(8) :: xi(3,maxnode)
       real(8) :: elarea(maxelem)
       integer :: gg(3,maxelem)
 
@@ -383,6 +368,7 @@
       real(8) :: areaave
       real(8) :: theta, y0
       real(8), parameter :: pi=3.1415926535897932384d0
+      logical :: ifdebug=.false.
 
       nesave=nelem+1   ! save old number of elements
 
@@ -394,15 +380,17 @@
 
       alpha=2.0d0*pi/dble(ndiv)
       rad=r1/sqrt(sin(alpha)/alpha)
-      write (*,*) 'add ring:'
-      write (*,30) 'ndiv  ', ndiv, npre
-      write (*,30) 'nnode ', nnode
-      write (*,30) 'n1 n2 ', n1, n2, 'start/end node of outer ring'
-      write (*,30) 'j1 j2 ', j1, j2, 'start of inner/outer ring'
-      write (*,30) 'ne    ', nesave, 0, 'start element number outer ring' 
-      write (*,*) '   alpha ', alpha
-      write (*,*) '   actual    radius ', r1
-      write (*,*) '   effective radius ', rad
+      if (ifdebug) then
+        write (*,*) 'add ring:'
+        write (*,30) 'ndiv  ', ndiv, npre
+        write (*,30) 'nnode ', nnode
+        write (*,30) 'n1 n2 ', n1, n2, 'start/end node of outer ring'
+        write (*,30) 'j1 j2 ', j1, j2, 'start of inner/outer ring'
+        write (*,30) 'ne    ', nesave, 0, 'start element number outer ring' 
+        write (*,*) '   alpha ', alpha
+        write (*,*) '   actual    radius ', r1
+        write (*,*) '   effective radius ', rad
+      endif
   30  format (4x,a,2i6,2x,a)
 
 ! Is there an offset?
@@ -410,29 +398,29 @@
 !
       ioff=0
       theta=0.0d0
-      y0=y(j1)
-      write (*,*) '   old ring started at y=', y0
+      y0=xi(2,j1)
+      if (ifdebug) write (*,*) '   old ring started at y=', y0
       if (ndiv.eq.npre) then   ! introduces offset in angle
         if (abs(y0).lt.1.0d-6) then   ! introduce angle offset low
           theta=-pi/dble(ndiv)        ! offset in angle
-          write (*,*) '   adding negative offset to angle'
+          if (ifdebug) write (*,*) '   adding negative offset to angle'
         else
           ioff=-1
-          write (*,*) '   adding negative offset to ring numbers'
+          if (ifdebug) write (*,*) '   adding negative offset to ring numbers'
         endif
         ! if it was already offset, keep start at zero
       else
         if (abs(y0).gt.1.0d-6) then   ! offset numbers because previous ring was offset
           ioff=-1
-          write (*,*) '   adding negative offset to ring numbers'
+          if (ifdebug) write (*,*) '   adding negative offset to ring numbers'
         endif
       endif
 
 ! zero degrees is at right and move counter-clockwise (unit circle)
       do j=1, ndiv
         nnode=nnode+1
-        x(nnode)=rad*cos(theta)
-        y(nnode)=rad*sin(theta)
+        xi(1,nnode)=rad*cos(theta)
+        xi(2,nnode)=rad*sin(theta)
         theta=theta+2.0d0*pi/dble(ndiv)
       enddo
 
@@ -516,9 +504,9 @@
         if (gg(1,j).le.0) write (*,*) '****** error gg1 element ', j
         if (gg(2,j).le.0) write (*,*) '****** error gg2 element ', j
         if (gg(3,j).le.0) write (*,*) '****** error gg3 element ', j
-        elarea(j)=vtk_areatri(x(gg(1,j)),y(gg(1,j)), &
-                              x(gg(2,j)),y(gg(2,j)), &
-                              x(gg(3,j)),y(gg(3,j)))
+        elarea(j)=vtk_areatri(xi(1,gg(1,j)),xi(2,gg(1,j)), &
+                              xi(1,gg(2,j)),xi(2,gg(2,j)), &
+                              xi(1,gg(3,j)),xi(2,gg(3,j)))
         areaave=areaave+elarea(j)
       enddo
 
@@ -542,7 +530,7 @@
 !  The x,y coordinates of the old and new node must align
 !
 !=======================================================================
-      subroutine replace_reduce(nold, nnew, nnode, nelem, x, y, gg, ringnum, msurf, maxnode, maxelem)
+      subroutine replace_reduce(nold, nnew, nnode, nelem, xi, gg, ringnum, msurf, maxnode, maxelem)
       implicit none
 
       integer, intent(in) :: maxnode
@@ -554,8 +542,7 @@
 !--- output
 
       integer :: nnode   ! number of nodes (will be reduced)
-      real(8) :: x(maxnode)
-      real(8) :: y(maxnode)
+      real(8) :: xi(3,maxnode)
       integer :: ringnum(maxnode)
       integer :: msurf  (maxnode)
       integer :: gg(3,maxelem)
@@ -568,18 +555,18 @@
 
       write (*,*) 'replacing node ', nold,' with ', nnew
 
-      if (abs(x(nold)-x(nnew)).gt.1.0d-8) then
-        write (*,*) 'xy old ', nold, x(nold), y(nold)
-        write (*,*) 'xy new ', nnew, x(nnew), y(nnew)
+      if (abs(xi(1,nold)-xi(1,nnew)).gt.1.0d-8) then
+        write (*,*) 'xy old ', nold, xi(1,nold), xi(2,nold)
+        write (*,*) 'xy new ', nnew, xi(1,nnew), xi(2,nnew)
         stop 'x values do not agree in node replace'
       endif
-      if (abs(y(nold)-y(nnew)).gt.1.0d-8) then
-        write (*,*) 'xy old ', nold, x(nold), y(nold)
-        write (*,*) 'xy new ', nnew, x(nnew), y(nnew)
+      if (abs(xi(2,nold)-xi(2,nnew)).gt.1.0d-8) then
+        write (*,*) 'xy old ', nold, xi(1,nold), xi(2,nold)
+        write (*,*) 'xy new ', nnew, xi(1,nnew), xi(2,nnew)
         stop 'y values do not agree in node replace'
       endif
-      x(nold)=x(nnew)
-      y(nold)=y(nnew)
+      xi(1,nold)=xi(1,nnew)
+      xi(2,nold)=xi(2,nnew)
       ringnum(nold)=ringnum(nnew)
       msurf(nold)=msurf(nnew)
 
@@ -598,8 +585,8 @@
       enddo
       nnode=nnode-1
       do i=nold, nnode
-        x(i)=x(i+1)
-        y(i)=y(i+1)
+        xi(1,i)=xi(1,i+1)
+        xi(2,i)=xi(2,i+1)
         ringnum(i)=ringnum(i+1)
         msurf(i)=msurf(i+1)
       enddo
@@ -613,7 +600,7 @@
 !  between the hex and the circle
 !
 !=======================================================================
-      subroutine pin_method2(ndiv, rpin1, rpin2, nnode, nelem, x, y, gg, elarea, ringnum, matl, msurf, maxnode, maxelem)
+      subroutine pin_method2(ndiv, rpin1, rpin2, nnode, nelem, xi, gg, elarea, ringnum, matl, msurf, maxnode, maxelem)
       use mod_vtklib3, only : vtk_areatri
       implicit none
 
@@ -625,8 +612,7 @@
 
       integer :: nnode   ! number of nodes
       integer :: nelem   ! number of elements
-      real(8) :: x(maxnode)
-      real(8) :: y(maxnode)
+      real(8) :: xi(3,maxnode)
       real(8) :: elarea(maxelem)
       integer :: ringnum(maxnode)
       integer :: gg(3,maxelem)
@@ -659,17 +645,28 @@
 
       real(8), parameter :: pi=3.1415926535897932384d0
 
-!--- define
+!--- define constants
+
+      write (*,*)
+      write (*,*) '============ CREATING HEX MESH ================'
 
       if (mod(ndiv,6).ne.0) stop 'ndiv must be divisible by 6 for hex mesh'
 
-      if (rpin1.gt.rpin2) stop 'pin radii must be in increasing order'
+      if (rpin1.ge.rpin2) stop 'pin radii must be in increasing order'
+
+!  Note: if too many divisions, the mesh between the hex and the circle can get stretched out.
+!  One way to fix this would be to add more rows of triangles, but it would not be straightforward
+!  to connect the triangles to the circle....
+
+      if (ndiv.gt.96) then
+        write (*,*) 'WARNING: large number of divisions in method 2 - bad mesh on outer region'
+      endif
 
       rpin=rpin1
       nelem=0
       nnode=0
-      x(:)=0.0d0
-      y(:)=0.0d0
+      xi(1,:)=0.0d0
+      xi(2,:)=0.0d0
       elarea(:)=-10.0d0
       ringnum(:)=-10
       gg(:,:)=0
@@ -687,12 +684,10 @@
   ! b is the "height" of the triangle
       b=rad*cos(pi/6.0d0)
 
-      write (*,*)
-      write (*,*) '============ CREATING HEX MESH ================'
       write (*,*) 'effective radius ', rad
       write (*,*) 'b     =          ', b
 
-      write (*,*) ' b**2 + (h/2)**2 - rad**2 ', b*b + rad*rad*0.25d0 - rad*rad
+      write (*,*) 'b**2 + (h/2)**2 - rad**2 ', b*b + rad*rad*0.25d0 - rad*rad
 
       nx=ndiv/6   ! number of divisions per face
       hxx=rad/dble(nx)
@@ -712,23 +707,23 @@
       nrg=0
 
       nnode=nnode+1
-      x(nnode)=-rad*0.5d0
-      y(nnode)= b
+      xi(1,nnode)=-rad*0.5d0
+      xi(2,nnode)= b
       ringnum(nnode)=nrow
       n1=nnode    ! save starting point of row
       ibeg(nrow)=nnode
-!!    write (*,*) 'initial x y ', nnode, x(nnode), y(nnode)
+!!    write (*,*) 'initial x y ', nnode, xi(1,nnode), xi(2,nnode)
 
       do i=1, nx
         nnode=nnode+1
-        x(nnode)=x(nnode-1)+hxx
-        y(nnode)=y(nnode-1)
+        xi(1,nnode)=xi(1,nnode-1)+hxx
+        xi(2,nnode)=xi(2,nnode-1)
         ringnum(nnode)=nrow
       enddo
       iend(nrow)=nnode
-!!    write (*,*) 'final   x y ', nnode, x(nnode), y(nnode)
+!!    write (*,*) 'final   x y ', nnode, xi(1,nnode), xi(2,nnode)
 
-!!    write (*,177) nrow, nnode, nelem, x(nnode), y(nnode)
+!!    write (*,177) nrow, nnode, nelem, xi(1,nnode), xi(2,nnode)
 ! 177 format (' end of row', i3,'  nnode=', 2i5, 2f12.8)
 
 !  other rows including center
@@ -738,27 +733,27 @@
 
         j1=n1   ! previous row counter
         nnode=nnode+1
-        x(nnode)=x(n1)-hxx*0.5d0
-        y(nnode)=y(n1)-bxx
+        xi(1,nnode)=xi(1,n1)-hxx*0.5d0
+        xi(2,nnode)=xi(2,n1)-bxx
         ringnum(nnode)=nrow
         n1=nnode    ! save starting point of row
         j2=n1   ! current row counter
         ibeg(nrow)=nnode
 
         if (nrg.eq.nx) then   ! y should be zero
-          if (abs(y(nnode)-0.0d0).gt.1.0d-10) stop 'zero test failed'
-          y(nnode)=0.0d0   ! make exact
+          if (abs(xi(2,nnode)-0.0d0).gt.1.0d-10) stop 'zero test failed'
+          xi(2,nnode)=0.0d0   ! make exact
         endif
 
         do i=1, nx+nrg
           nnode=nnode+1
-          x(nnode)=x(nnode-1)+hxx
-          y(nnode)=y(nnode-1)
+          xi(1,nnode)=xi(1,nnode-1)+hxx
+          xi(2,nnode)=xi(2,nnode-1)
           ringnum(nnode)=nrow
         enddo
         iend(nrow)=nnode
 
-!!      write (*,177) nrow, nnode, nelem, x(nnode), y(nnode)
+!!      write (*,177) nrow, nnode, nelem, xi(1,nnode), xi(2,nnode)
       enddo
 
 !  bottom row - work backwards and make rows smaller
@@ -768,8 +763,8 @@
 
         j1=n1   ! previous row counter
         nnode=nnode+1
-        x(nnode)=x(n1)+hxx*0.5d0
-        y(nnode)=y(n1)-bxx
+        xi(1,nnode)=xi(1,n1)+hxx*0.5d0
+        xi(2,nnode)=xi(2,n1)-bxx
         ringnum(nnode)=nrow
         n1=nnode    ! save starting point of row
         j2=n1   ! current row counter
@@ -777,15 +772,15 @@
 
         do i=1, nx+nrg
           nnode=nnode+1
-          x(nnode)=x(nnode-1)+hxx
-          y(nnode)=y(nnode-1)
+          xi(1,nnode)=xi(1,nnode-1)+hxx
+          xi(2,nnode)=xi(2,nnode-1)
           ringnum(nnode)=nrow
         enddo
         iend(nrow)=nnode
 
-!!      write (*,177) nrow, nnode, nelem, x(nnode), y(nnode)
+!!      write (*,177) nrow, nnode, nelem, xi(1,nnode), xi(2,nnode)
       enddo
-!!    write (*,*) 'final   x y ', x(nnode), y(nnode)
+!!    write (*,*) 'final   x y ', xi(1,nnode), xi(2,nnode)
 
       korn(1)=iend((nrow+1)/2)
       korn(2)=iend(1)
@@ -801,11 +796,11 @@
       ringnum(korn(5))=nrow+5
       ringnum(korn(6))=nrow+5
 
-      write (*,'(a,6i5)') ' corner nodes ', korn(:)
-      write (*,*) 'beginning/end nodes of each row'
-      do i=1, nrow
-        write (*,'(i4,2x,2i5)') i, ibeg(i), iend(i)
-      enddo
+!d    write (*,'(a,6i5)') ' corner nodes ', korn(:)
+!d    write (*,*) 'beginning/end nodes of each row'
+!d    do i=1, nrow
+!d      write (*,'(i4,2x,2i5)') i, ibeg(i), iend(i)
+!d    enddo
 
 !--- define elements
 
@@ -855,14 +850,14 @@
       enddo
   188 format ('  end of row', i3,' nelem = ', i6)
 
-!--- calculate element areas
+!--- calculate element areas in hex region
 
       xsum=0.0d0
       do i=1, nelem
         k1=gg(1,i)
         k2=gg(2,i)
         k3=gg(3,i)
-        elarea(i)=vtk_areatri(x(k1), y(k1), x(k2), y(k2), x(k3), y(k3))
+        elarea(i)=vtk_areatri(xi(1,k1), xi(2,k1), xi(1,k2), xi(2,k2), xi(1,k3), xi(2,k3))
         xsum=xsum+elarea(i)
         if (abs(elarea(i)-elarea(1)).gt.1.0d-8) write (*,*) '***** area mismatch ****'
       enddo
@@ -890,11 +885,11 @@
       do i=0, ndiv-1
         nnode=nnode+1
         theta=dble(i)*alpha
-        x(nnode)=rad*cos(theta)
-        y(nnode)=rad*sin(theta)
+        xi(1,nnode)=rad*cos(theta)
+        xi(2,nnode)=rad*sin(theta)
         ringnum(nnode)=20
         msurf(nnode)=0            ! inner ring surface
-        write (*,'(i6,2f12.8)') nnode, x(nnode), y(nnode)
+!d      write (*,'(i6,2f12.8)') nnode, xi(1,nnode), xi(2,nnode)
       enddo
 
 !--- define array of node numbers on surface of hexagon
@@ -966,8 +961,8 @@
 
         i=j1+1
         if (i.gt.ndiv) i=1   ! loop back   ! check that corners align
-        if (abs(x(i+jring)-x(jhex(j1+1))).gt.1.0d-8) stop 'x assertion fail corn 2'
-        if (abs(y(i+jring)-y(jhex(j1+1))).gt.1.0d-8) stop 'y assertion fail corn 2'
+        if (abs(xi(1,i+jring)-xi(1,jhex(j1+1))).gt.1.0d-8) stop 'x assertion fail corn 2'
+        if (abs(xi(2,i+jring)-xi(2,jhex(j1+1))).gt.1.0d-8) stop 'y assertion fail corn 2'
       enddo
 
 !--- replace and remove 6 duplicate nodes on hex corners that are also on circle
@@ -978,7 +973,7 @@
       enddo
       do j=1, 6          ! old new   70 128
         jold=korn(j)
-        call replace_reduce(jold, ilist(j), nnode, nelem, x, y, gg, ringnum, msurf, maxnode, maxelem)
+        call replace_reduce(jold, ilist(j), nnode, nelem, xi, gg, ringnum, msurf, maxnode, maxelem)
         do i=1, 6   ! reduce temp arrays
           if (ilist(i).eq.jold) ilist(i)=ilist(j)
           if (korn (i).eq.jold) korn (i)=ilist(j)
@@ -995,7 +990,7 @@
         k1=gg(1,i)
         k2=gg(2,i)
         k3=gg(3,i)
-        elarea(i)=vtk_areatri(x(k1), y(k1), x(k2), y(k2), x(k3), y(k3))
+        elarea(i)=vtk_areatri(xi(1,k1), xi(2,k1), xi(1,k2), xi(2,k2), xi(1,k3), xi(2,k3))
       enddo
       call check_area(rpin, nelem, elarea)
 
@@ -1014,7 +1009,7 @@
 
       n1=ndiv       ! previous ring 
       n2=ndiv*2     ! new      ring  (double mesh)
-      call addring(n2, n1, rpin2, nnode, nelem, x, y, gg, elarea, maxnode, maxelem)
+      call addring(n2, n1, rpin2, nnode, nelem, xi, gg, elarea, maxnode, maxelem)
 
       do i=msave+1, nelem
         matl(i)=2            ! define materials to new elements in ring
@@ -1030,7 +1025,7 @@
         k1=gg(1,i)
         k2=gg(2,i)
         k3=gg(3,i)
-        elarea(i)=vtk_areatri(x(k1), y(k1), x(k2), y(k2), x(k3), y(k3))
+        elarea(i)=vtk_areatri(xi(1,k1), xi(2,k1), xi(1,k2), xi(2,k2), xi(1,k3), xi(2,k3))
       enddo
       call check_area(rpin2, nelem, elarea)
 
