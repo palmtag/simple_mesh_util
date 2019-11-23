@@ -14,6 +14,8 @@ meshgen
 * square   - program to create simple square meshes 
 * triangle - program to create simple triangle meshes 
 
+gmsh - utilities to create gmsh input files
 
-
-
+* createlat - create gmsh input for PWR lattice
+* createtri - create gmsh input for triangle lattice
+* msh2vtk   - program to convert gmsh output files to VTK

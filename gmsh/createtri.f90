@@ -20,6 +20,10 @@
 !        They added a lot of new information to version 4
 !   * GMSH will export a VTK file, but it is only the mesh.  It doesn't contain material info.
 !
+! To-do: *** create outer boundary condition
+!    current line loop is for moderator, need to make new line for outer boundary
+!    not sure why outbc is not being written.  Maybe convert line loop to list of lines?
+!
 !=======================================================================
 
       integer :: i
@@ -75,29 +79,16 @@
       rodtype(:)=0
 
 !--- loop over each fuel rod and determine center coordinates
+!---  Work around outer boundary in a loop
 
       nrod=0
 
-! lower left corner rod (partial rod)
+!--- lower left corner rod (partial rod)
 
       nrod=nrod+1
       rodxy(1,nrod)=0.0d0
       rodxy(2,nrod)=0.0d0
       rodtype(nrod)=1
-
-!  lower right corner rod (partial rod)
-
-      nrod=nrod+1
-      rodxy(1,nrod)=nedge*pedge
-      rodxy(2,nrod)=0.0d0
-      rodtype(nrod)=2
-
-!  upper rod (partial rod)
-
-      nrod=nrod+1
-      rodxy(1,nrod)=nedge*pedge*0.5d0              ! rod center coordinate
-      rodxy(2,nrod)=nedge*pedge*0.5d0*sqrt(3.0d0)  ! rod center coordinate
-      rodtype(nrod)=3
 
 !--- rods across bottom half of triangle (half rods)
 
@@ -108,7 +99,14 @@
          rodtype(nrod)=4
       enddo
 
-!--- edge rods right side of triangle (type 5) *********************** FINISH
+!--- lower right rod in corner of triangle (partial rod)
+
+      nrod=nrod+1
+      rodxy(1,nrod)=nedge*pedge
+      rodxy(2,nrod)=0.0d0
+      rodtype(nrod)=2
+
+!--- edge rods right side of triangle (type 5)
 
       do i=1, nedge/3-1    ! half rods
          nrod=nrod+1
@@ -117,16 +115,23 @@
          rodtype(nrod)=5
       enddo
 
-!--- edge rods left side of triange  (type 6)
+!--- upper rod in triangle (partial rod)
 
-      do i=1, nedge/3-1    ! half rods
+      nrod=nrod+1
+      rodxy(1,nrod)=nedge*pedge*0.5d0
+      rodxy(2,nrod)=nedge*pedge*0.5d0*sqrt(3.0d0)
+      rodtype(nrod)=3
+
+!--- edge rods left side of triangle  (type 6)
+
+      do i=nedge/3-1, 1, -1    ! half rods
          nrod=nrod+1
          rodxy(1,nrod)=i*3*pedge*0.5d0
          rodxy(2,nrod)=i*3*pedge*0.5d0*sqrt(3.0d0)
          rodtype(nrod)=6
       enddo
 
-!---- full pins in middle rows
+!---- full pins away from edges
 
       ioff=1
       do jrow=nedge, 2, -1   ! skip very top
@@ -155,6 +160,8 @@
 
 !--- create geo file
 
+      write (*,*) 'number of rods in problem = ', nrod
+
       call trigeo(rfuel, nrod, rodxy, rodtype)
 
       end
@@ -169,8 +176,7 @@
 !
 !-----------------------------------------------------------------------
 
-      real(8), intent(in) :: rfuel    ! fuel rod radii
-
+      real(8), intent(in) :: rfuel    ! fuel rod radii (should be array)
       integer, intent(in) :: numrod   ! total number of rods
       real(8), intent(in) :: rodxy(2,numrod)  ! center coordinates
       integer, intent(in) :: rodtype(numrod)  ! rod types
@@ -181,16 +187,20 @@
 
       integer :: ifl=20   ! output file unit
 
-      integer :: np    ! point number
-      integer :: ir    ! region number
-      integer :: nrod  ! rod counter
+      integer :: np       ! point number
+      integer :: ir       ! region number
+      integer :: nrod     ! rod counter
 
-      integer :: nc       ! pointer for center for rod
-      integer :: l1       ! pointers
+      integer :: nc       ! pointer for center of rod
+      integer :: irline   ! rod surface number
       integer :: np1, np2, np3, np4   ! pointers
+      integer :: npstart              ! pointers
 
-      integer :: nos
-      integer, allocatable :: nsave(:)
+      integer :: nos                    ! number of rod regions
+      integer :: nbound                 ! number of boundary lines
+      integer :: lastbpt                ! save last boundary point for connecting line
+      integer, allocatable :: nsave(:)  ! save rod regions to define final moderator region
+      integer, allocatable :: boundlines(:)  ! save boundary lines for final moderator region
 
       real(8) :: xc, yc
       real(8) :: rad1
@@ -198,8 +208,11 @@
 !--- initialize
 
       nos=0    ! save rod outer surface pointer
-      allocate (nsave(numrod))
+      allocate (nsave(numrod+1))
       nsave=0
+
+      allocate (boundlines(4*numrod))   ! over allocate
+      nbound=0
 
       open (ifl,file='tri.geo')
 
@@ -216,23 +229,6 @@
       write (ifl,*)
       write (ifl,'(a)') 'General.BackgroundGradient=0; '
       write (ifl,'(a)') 'General.Color.Background={63,255,50};'
-
-!--- write outer box
-
-      write (ifl,'(/,a)') '//  define outer box of triangle'
-      write (ifl,130) 1, rodxy(:,1)   ! bottom left corner
-      write (ifl,130) 2, rodxy(:,2)   ! bottom right corner
-      write (ifl,130) 3, rodxy(:,3)   ! top corner
-
-      write (ifl,*)
-      write (ifl,'(a)') 'Line(1) = {1, 2};'
-      write (ifl,'(a)') 'Line(2) = {2, 3};'
-      write (ifl,'(a)') 'Line(3) = {3, 1};'
-      write (ifl,*)
-      write (ifl,'(a)') 'Line Loop(5) = {1, 2, 3};     // outer boundary'
-      write (ifl,*)
-      write (ifl,'(a)') 'Physical Line("OutBC") = {1, 2, 3};  // outer surface label'
-      write (ifl,*)
 
       np=3   ! number of points so far
       ir=4   ! region number so far  (lines and loop)
@@ -260,15 +256,19 @@
 
         rad1=rfuel  ! fuel pin   ! look up rod sizes here
 
-!d      if (rodtype(nrod).gt.0) cycle ! ***************************************** DEBUG
+        irline=0
 
         if (rodtype(nrod).eq.1) then     ! lower left corner sixth rod
 
           write (ifl,120) nrod, 'lower left partial rod'
 
-          nc=1   ! use already defined point at lower left corner
+          np=np+1
+          nc=np  ! save rod center
+          write (ifl,130) np, xc, yc
+
           np=np+1
           np1=np  ! save
+          npstart=np  ! save starting point of boundary
           write (ifl,130) np, xc+rad1*0.5d0, yc+rad1*0.5d0*sqrt(3.0d0)   ! top point on curve
           np=np+1
           np2=np  ! save
@@ -278,18 +278,23 @@
           write (ifl,142) ir, nc, np1          ! line
           ir=ir+1
           write (ifl,140) ir, np1, nc, np2     ! circle arc
+          nbound=nbound+1
+          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          lastbpt=np2            ! save last point of boundary arc
           ir=ir+1
           write (ifl,142) ir, np2, nc          ! line
 
           ir=ir+1
-          l1=ir
-          write (ifl,152) l1, ir-3, ir-2, ir-1, 'surface for partial rod'
+          irline=ir
+          write (ifl,152) irline, ir-3, ir-2, ir-1, 'surface for partial rod'
 
         elseif (rodtype(nrod).eq.2) then   ! lower right corner rod sixth
 
           write (ifl,120) nrod, 'lower right partial rod'
 
-          nc=2   ! use already defined point at corner of problem
+          np=np+1
+          nc=np  ! save rod center
+          write (ifl,130) np, xc, yc
           np=np+1
           np1=np  ! save
           write (ifl,130) np, xc-rad1, yc      ! bottom point on curve
@@ -298,47 +303,64 @@
           write (ifl,130) np, xc-rad1*0.5d0, yc+rad1*0.5d0*sqrt(3.0d0)   ! top point on curve
 
           ir=ir+1
+          write (ifl,142) ir, lastbpt, np1  ! boundary line
+          nbound=nbound+1
+          boundlines(nbound)=ir  ! boundary line
+
+          ir=ir+1
           write (ifl,140) ir, np1, nc, np2     ! fuel circles
+          nbound=nbound+1
+          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          lastbpt=np2            ! save last point of boundary arc
           ir=ir+1
           write (ifl,142) ir, np2, nc          ! line
           ir=ir+1
           write (ifl,142) ir, nc, np1         ! line
 
           ir=ir+1
-          l1=ir
-          write (ifl,152) l1, ir-3, ir-2, ir-1, 'rod surface'
+          irline=ir
+          write (ifl,152) irline, ir-3, ir-2, ir-1, 'rod surface'
 
         elseif (rodtype(nrod).eq.3) then   ! top corner rod sixth
 
           write (ifl,120) nrod, 'upper partial rod'
 
-          nc=3   ! use already defined point at corner of problem
+          np=np+1
+          nc=np  ! save rod center
+          write (ifl,130) np, xc, yc
           np=np+1
           np1=np  ! save
-          write (ifl,130) np, xc-rad1*0.5d0, yc-rad1*0.5d0*sqrt(3.0d0)  ! left point on curve
+          write (ifl,130) np, xc+rad1*0.5d0, yc-rad1*0.5d0*sqrt(3.0d0)  ! right point on curve
           np=np+1
           np2=np  ! save
-          write (ifl,130) np, xc+rad1*0.5d0, yc-rad1*0.5d0*sqrt(3.0d0)  ! right point on curve
+          write (ifl,130) np, xc-rad1*0.5d0, yc-rad1*0.5d0*sqrt(3.0d0)  ! left point on curve
+
+          ir=ir+1
+          write (ifl,142) ir, lastbpt, np1  ! boundary line
+          nbound=nbound+1
+          boundlines(nbound)=ir  ! boundary line
 
           ir=ir+1
           write (ifl,140) ir, np1, nc, np2    ! fuel circles
+          nbound=nbound+1
+          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          lastbpt=np2            ! save last point of boundary arc
           ir=ir+1
           write (ifl,142) ir, np2, nc         ! line
           ir=ir+1
           write (ifl,142) ir, nc, np1         ! line
 
           ir=ir+1
-          l1=ir
-          write (ifl,152) l1, ir-3, ir-2, ir-1, 'rod surface'
+          irline=ir
+          write (ifl,152) irline, ir-3, ir-2, ir-1, 'rod surface'
 
-        elseif (rodtype(nrod).eq.4) then   ! part rod on edge
+        elseif (rodtype(nrod).eq.4) then
 
           write (ifl,120) nrod, 'bottom row half rod'
 
           np=np+1
           nc=np  ! save rod center point for fuel
           write (ifl,130) nc, xc, yc
-
           np=np+1
           np1=np
           write (ifl,130) np, xc-rad1, yc   ! left
@@ -348,36 +370,77 @@
           np=np+1
           np3=np
           write (ifl,130) np, xc+rad1, yc   ! right
-          np=np+1
 
-        elseif (rodtype(nrod).eq.5) then   ! part rod on edge
-!d        cycle  ! ***************************************** DEBUG
+          ir=ir+1
+          write (ifl,142) ir, lastbpt, np1  ! boundary line
+          nbound=nbound+1
+          boundlines(nbound)=ir  ! boundary line
+
+          ir=ir+1
+          write (ifl,140) ir, np1, nc, np2   ! fuel circles
+          nbound=nbound+1
+          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          ir=ir+1
+          write (ifl,140) ir, np2, nc, np3
+          nbound=nbound+1
+          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          lastbpt=np3            ! save last point of boundary arc
+          ir=ir+1
+          write (ifl,142) ir, np3, nc    ! line
+          ir=ir+1
+          write (ifl,142) ir, nc,  np1   ! line
+
+          ir=ir+1
+          irline=ir
+          write (ifl,150) irline, ir-4, ir-3, ir-2, ir-1, 'fuel rod surface'
+
+        elseif (rodtype(nrod).eq.5) then
 
           write (ifl,120) nrod, 'right edge half rod'
 
           np=np+1
           nc=np  ! save rod center point for fuel
           write (ifl,130) nc, xc, yc
-
           np=np+1
           np1=np
-          write (ifl,130) np, xc-rad1*0.5d0, yc+rad1*0.5d0*sqrt(3.0d0)   ! top
+          write (ifl,130) np, xc+rad1*0.5d0, yc-rad1*0.5d0*sqrt(3.0d0)   ! bottom
           np=np+1
           np2=np
           write (ifl,130) np, xc-rad1, yc   ! middle
           np=np+1
           np3=np
-          write (ifl,130) np, xc+rad1*0.5d0, yc-rad1*0.5d0*sqrt(3.0d0)   ! bottom
-          np=np+1
+          write (ifl,130) np, xc-rad1*0.5d0, yc+rad1*0.5d0*sqrt(3.0d0)   ! top
 
-        elseif (rodtype(nrod).eq.6) then   ! part rod on left edge
+          ir=ir+1
+          write (ifl,142) ir, lastbpt, np1  ! boundary line
+          nbound=nbound+1
+          boundlines(nbound)=ir  ! boundary line
+
+          ir=ir+1
+          write (ifl,140) ir, np1, nc, np2   ! fuel circles
+          nbound=nbound+1
+          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          ir=ir+1
+          write (ifl,140) ir, np2, nc, np3
+          nbound=nbound+1
+          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          lastbpt=np3            ! save last point of boundary arc
+          ir=ir+1
+          write (ifl,142) ir, np3, nc    ! line
+          ir=ir+1
+          write (ifl,142) ir, nc,  np1   ! line
+
+          ir=ir+1
+          irline=ir
+          write (ifl,150) irline, ir-4, ir-3, ir-2, ir-1, 'fuel rod surface'
+
+        elseif (rodtype(nrod).eq.6) then
 
           write (ifl,120) nrod, 'left edge half rod'
 
           np=np+1
           nc=np  ! save rod center point for fuel
           write (ifl,130) nc, xc, yc
-
           np=np+1
           np1=np
           write (ifl,130) np, xc+rad1*0.5d0, yc+rad1*0.5d0*sqrt(3.0d0)   ! top
@@ -387,7 +450,29 @@
           np=np+1
           np3=np
           write (ifl,130) np, xc-rad1*0.5d0, yc-rad1*0.5d0*sqrt(3.0d0)   ! bottom
-          np=np+1
+
+          ir=ir+1
+          write (ifl,142) ir, lastbpt, np1  ! boundary line
+          nbound=nbound+1
+          boundlines(nbound)=ir  ! boundary line
+
+          ir=ir+1
+          write (ifl,140) ir, np1, nc, np2   ! fuel circles
+          nbound=nbound+1
+          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          ir=ir+1
+          write (ifl,140) ir, np2, nc, np3
+          nbound=nbound+1
+          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          lastbpt=np3            ! save last point of boundary arc
+          ir=ir+1
+          write (ifl,142) ir, np3, nc   ! line
+          ir=ir+1
+          write (ifl,142) ir, nc,  np1  ! line
+
+          ir=ir+1
+          irline=ir
+          write (ifl,150) irline, ir-4, ir-3, ir-2, ir-1, 'fuel rod surface'
 
         else    ! standard rod
 
@@ -409,14 +494,8 @@
           np4=np  ! save
           write (ifl,130) np, xc, yc-rad1      ! bott  point on curve
 
-       endif
-
-!--- print 4 point surfaces
-
-       if (rodtype(nrod).lt.1 .or. rodtype(nrod).gt.3) then
-
           ir=ir+1
-          write (ifl,140) ir, np1, nc, np2   ! fuel circles
+          write (ifl,140) ir, np1, nc, np2     ! fuel circles
           ir=ir+1
           write (ifl,140) ir, np2, nc, np3
           ir=ir+1
@@ -425,33 +504,62 @@
           write (ifl,140) ir, np4, nc, np1
 
           ir=ir+1
-          l1=ir
-          write (ifl,150) l1, ir-4, ir-3, ir-2, ir-1, 'fuel surface'
+          irline=ir
+          write (ifl,150) irline, ir-4, ir-3, ir-2, ir-1, 'fuel rod surface'
+
+          nbound=nbound+1
+          boundlines(nbound)=irline  ! add rod surface boundary line list
+
+          nos=nos+1           ! only save full rods, not partial rods on boundary
+          nsave(nos)=irline   ! save rod loop line to define moderator
 
         endif
 
-        nos=nos+1
-        nsave(nos)=l1   ! save rod outer surface to define moderator
-
         ir=ir+1
-        write (ifl,160) ir, l1
-        write (ifl,230) nrod, l1    ! physical surface
+        write (ifl,160) ir, irline
+        write (ifl,230) nrod, ir    ! physical surface of last rod
 
       enddo
 
   160 format ('  Plane Surface(',i0,') = {',i0,'};      // fuel region')
   230 format ('  Physical Surface("RegFuel',i3.3,'")={',i0,'};')
 
+!--- write outer box
+
+      write (ifl,'(/,a)') '//===================================================='
+      write (ifl,'(  a)') '//  define outer surface of moderator'
+      write (ifl,*)
+
+      ir=ir+1
+      write (ifl,142) ir, lastbpt, npstart  ! last connecting boundary line
+      nbound=nbound+1
+      boundlines(nbound)=ir
+
+      write (ifl,*)
+      ir=ir+1
+      write (ifl,240, advance='NO') ir, boundlines(1)    ! line loop over outer boundary
+      do j=2, nbound-1
+        write (ifl,252, advance='NO') boundlines(j)
+        if (mod(j,10).eq.0) write (ifl,*)  ! break line
+      enddo
+      j=nbound
+        write (ifl,254) boundlines(j)
+
+      write (ifl,244) ir
+  244 format ('  Physical Line("OutBC") = {',i0,'};  // outer surface label')
+
+      nos=nos+1
+      nsave(nos)=ir       ! save outer loop line
+
 !--- define final surface labels
-!  this is tricky because we have to write a long line of numbers that can vary
-!  with the problem size
-!  How long a line can gmesh handle?
+!  this is tricky because we have to write a long line of numbers that
+!  can vary with the problem size
 
       write (ifl,'(/,a)') '//===================================================='
       write (ifl,'(a)')   '//  Define coolant region and label'
-      ir=ir+1
-      write (ifl,250, advance='NO') ir, nsave(1)
 
+      ir=ir+1  ! surface
+      write (ifl,250, advance='NO') ir, nsave(1)
       do j=2, nos-1
         write (ifl,252, advance='NO') nsave(j)
         if (mod(j,10).eq.0) write (ifl,*)  ! break line
@@ -461,11 +569,10 @@
 
       write (ifl,260) ir
 
-!   5 is the outer boundary
-
-  250 format ('  Plane Surface(',i0,') ={5, ',10(i0,','))
-  252 format (2x,i0,',')
-  254 format (2x,i0,'};')
+  240 format ('  Line Loop(',i0,') ={',10(i0,','))
+  250 format ('  Plane Surface(',i0,') ={',10(i0,','))
+  252 format (i0,',')
+  254 format (i0,'};')
   260 format ('  Physical Surface("RegCool")={',i0,'};')
 
       write (ifl,*)

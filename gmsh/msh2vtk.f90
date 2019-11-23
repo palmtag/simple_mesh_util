@@ -260,23 +260,25 @@
          read (12,'(a)') line
          read (line,*) ii, itype, ntag
          if (ii.ne.i) stop 'invalid element number'
-!!       if (ntag .ne.3) write (*,*) 'warning: element tag is not 3  ', ntag
          if (itype.eq.2) then   ! triangle
            nelem=nelem+1
            itag(:)=-100
            read (line,*) ii, itype, ntag, itag(1:ntag), gg(1:3,nelem)
-           imesh1(nelem)=itag(1)    ! region numbers (e.g. 4,5,6)
-           imesh2(nelem)=itag(2)    ! geometry entity (15,17,18)
-           imesh3(nelem)=itag(3)
+           if (ntag.ge.1) imesh1(nelem)=itag(1)    ! region numbers (e.g. 4,5,6)
+           if (ntag.ge.2) imesh2(nelem)=itag(2)    ! geometry entity (15,17,18)
+           if (ntag.ge.3) imesh3(nelem)=itag(3)
          elseif (itype.eq.1) then
            read (line,*) ii, itype, ntag, itag(1:ntag), i1, i2
-           isurf1(i1)=itag(1)   ! if this is a line surface, assign to 2 nodes
-           isurf1(i2)=itag(1)
-           isurf2(i1)=itag(2)
-           isurf2(i2)=itag(2)
+           if (ntag.ge.1) isurf1(i1)=itag(1)   ! if this is a line surface, assign to 2 nodes
+           if (ntag.ge.1) isurf1(i2)=itag(1)
+           if (ntag.ge.2) isurf2(i1)=itag(2)
+           if (ntag.ge.2) isurf2(i2)=itag(2)
+         elseif (itype.eq.15) then  ! point
+           write (*,*) 'ignoring point type in element list'
+           continue
          else
            write (*,*) 'element ', i, ' type=', itype
-           stop 'unknown element number'
+           stop 'unknown element type'
          endif
       enddo
       read (12,'(a)') line
@@ -337,14 +339,12 @@
           if (inamenum(k).eq.j) kk=k
         enddo
         if (kk.eq.0) then
-          write (*,*) '*** ERROR ******'
-          write (*,*) '*** element ', i,' of ', nelem
-          write (*,*) '*** region ', j
-          write (*,*) '*** nname (max region)  ', nname
-          stop 'region number not found'
+          write (*,*) '*** ERROR: could not find region for element/region ', i, j
+!         stop 'region number not found'
+        else
+          inamecnt(kk)=inamecnt(kk)+1
+          vreg(kk)  =vreg(kk)+elarea(i)
         endif
-        inamecnt(kk)=inamecnt(kk)+1
-        vreg(kk)  =vreg(kk)+elarea(i)
       enddo
 
   220 format (' sum of region',2i5,1x,a,i6, f12.6)
@@ -408,7 +408,7 @@
 
       ifmesh3=.false.    ! flag to write mesh3 to VTK file
       do i=1, nelem
-        if (imesh3(i).ne.-100) then
+        if (imesh3(i).ne.-10) then
            write (*,*) 'imesh3', i, imesh3(i)
            ifmesh3=.true.
         endif
@@ -430,20 +430,17 @@
           if (inamenum(k).eq.j) kk=k
         enddo
         if (kk.eq.0) then
-          write (*,*) '*** ERROR ******'
-          write (*,*) '*** element ', i,' of ', nelem
-          write (*,*) '*** region ', j
-          write (*,*) '*** nname (max region)  ', nname
-          stop 'region number not found'
-        endif
-
-        c7=cname(kk)(1:7)
-        if     (c7.eq.'RegFuel') then
-          imesh4(i)=1
-        elseif (c7.eq.'RegClad') then
-          imesh4(i)=2
-        elseif (c7.eq.'RegCool') then
-          imesh4(i)=3
+          write (*,*) '*** ERROR: could not find region for element/region ', i, j
+!         stop 'region number not found'
+        else
+          c7=cname(kk)(1:7)
+          if     (c7.eq.'RegFuel') then
+            imesh4(i)=1
+          elseif (c7.eq.'RegClad') then
+            imesh4(i)=2
+          elseif (c7.eq.'RegCool') then
+            imesh4(i)=3
+          endif
         endif
 !       write (*,*) 'element ', i, kk, imesh4(i)
       enddo
@@ -452,6 +449,8 @@
 
       fvtk=trim(fname)//'.vtk'
       write (*,'(/,2a)') ' creating vtk file: ', trim(fvtk)
+      write (*,*)        '    nnode ', nnode
+      write (*,*)        '    nelem ', nelem
 
       open (22,file=fvtk)
       call vtk_tri1(22, nnode, nelem, iorder, xi, gg)
