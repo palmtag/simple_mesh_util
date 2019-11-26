@@ -56,14 +56,15 @@
       real(8), allocatable :: xi(:,:)    ! (3,nnode)
       integer, allocatable :: gg(:,:)    ! (iorder,nelem)
 
-      integer, allocatable :: isurf1(:)  ! (nnode)   surface numbers
-      integer, allocatable :: isurf2(:)  ! (nnode)
+      integer, allocatable :: isurf1(:)  ! (nnode)   outer surface numbers
+      integer, allocatable :: isurf2(:)  ! (nnode)   rod surface number
       integer, allocatable :: imesh1(:)  ! (nelem)   region numbers
       integer, allocatable :: imesh2(:)  ! (nelem)
       integer, allocatable :: imesh3(:)  ! (nelem)
       integer, allocatable :: imesh4(:)  ! (nelem)   region types (calculated from names)
 
       character(len=7)   :: c7
+      character(len=20)  :: csurf1
       character(len=100) :: line
       character(len=100) :: fname, fvtk, fmesh
 
@@ -92,8 +93,8 @@
       if (line.ne.'$MeshFormat') stop 'invalid title line'
 
       read (12,*) xver, i1, i2
-      write (*,*) 'file version ', xver
-      write (*,*) 'file type    ', i1
+      write (*,'(a,f8.4)') ' file version ', xver
+      write (*,'(a,i0)')   ' file type    ', i1
 ! 2019 version is 4.1 - but we don't support yet
       if (abs(xver-2.1d0).gt.0.001d0 .and. abs(xver-2.2d0).gt.0.001d0) stop 'invalid mesh file version'
       if (i1.ne.0) stop 'invalid file type'
@@ -152,8 +153,8 @@
       write (*,*) 'nname =', nname
 
       allocate (inametype(nname))  ! region type
-      allocate (inamenum(nname))  ! region number
-      allocate (cname(nname))    ! region labels
+      allocate (inamenum(nname))   ! region number
+      allocate (cname(nname))      ! region labels
       inametype(:)=0
       inamenum(:)=0
 
@@ -161,11 +162,6 @@
 
       do i=1, nname
         read (12,*) inametype(i), inamenum(i), cname(i)
-!x      if (i2.ne.i) then
-!x        write (*,*) 'read ', i2
-!x        write (*,*) 'expecting ', i
-!x        stop 'name number error'
-!x      endif
       enddo
 
       read (12,'(a)') line
@@ -251,6 +247,7 @@
       allocate (isurf2(nnode))
       isurf1(:)=0
       isurf2(:)=0
+      csurf1='surf'
 
       imesh1(:)=-10
       imesh2(:)=-10
@@ -273,6 +270,7 @@
            if (ntag.ge.1) isurf1(i2)=itag(1)
            if (ntag.ge.2) isurf2(i1)=itag(2)
            if (ntag.ge.2) isurf2(i2)=itag(2)
+!d         write (*,*) 'debug: setting surf1 ', i1, i2, itag(1), itag(2)
          elseif (itype.eq.15) then  ! point
            write (*,*) 'ignoring point type in element list'
            continue
@@ -381,15 +379,21 @@
       write (*,*) 'check 1D surfaces:'
 
       nzero=0            ! nodes without surface
-
       do i=1, nnode
-        if (isurf1(i).eq.0) then
+        j=isurf1(i)          ! surface type, not the surface number
+        if (j.eq.0) then
           nzero=nzero+1
-          cycle
+        else
+          kk=0
+          do k=1, nname
+            if (inamenum(k).eq.j) kk=k
+          enddo
+          if (kk.gt.0) then
+             inamecnt(kk)=inamecnt(kk)+1
+             csurf1=cname(kk)
+             if (inametype(kk).ne.1) stop 'surface type is not 1'
+          endif
         endif
-        j=isurf1(i)
-        inamecnt(j)=inamecnt(j)+1
-        if (inametype(j).ne.1) stop '**** surface type is not 1 ****'
       enddo
 
   230 format (' sum of surface',i4,1x,a,i6)
@@ -454,7 +458,7 @@
 
       open (22,file=fvtk)
       call vtk_tri1(22, nnode, nelem, iorder, xi, gg)
-      call vtk_tri2(22, nnode, isurf1, 'surf1',  'n')  ! nodal data
+      call vtk_tri2(22, nnode, isurf1, trim(csurf1),  'n')  ! nodal data
       call vtk_tri2(22, nnode, isurf2, 'surf2',  ' ')
       call vtk_tri2(22, nelem, imesh1, 'region', 'e')  ! elem data
       call vtk_tri2(22, nelem, imesh2, 'geom_entity', ' ')

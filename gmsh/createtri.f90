@@ -222,7 +222,7 @@
       write (ifl,'(a)') '//  Triangle Mesh Generator '
       write (ifl,*)
       write (ifl,'(a)') '// set characteristic length'
-!x    write (ifl,'(a)') 'lc=0.05;'
+      write (ifl,'(a)') '// lc=0.05;'
       write (ifl,'(a)') 'lc=0.1;'
       write (ifl,*)
       write (ifl,'(a)') 'lcb=0.05;  // characteristic length on border'
@@ -507,9 +507,6 @@
           irline=ir
           write (ifl,150) irline, ir-4, ir-3, ir-2, ir-1, 'fuel rod surface'
 
-          nbound=nbound+1
-          boundlines(nbound)=irline  ! add rod surface boundary line list
-
           nos=nos+1           ! only save full rods, not partial rods on boundary
           nsave(nos)=irline   ! save rod loop line to define moderator
 
@@ -527,7 +524,7 @@
 !--- write outer box
 
       write (ifl,'(/,a)') '//===================================================='
-      write (ifl,'(  a)') '//  define outer surface of moderator'
+      write (ifl,'(  a)') '//  define outer surface of coolant'
       write (ifl,*)
 
       ir=ir+1
@@ -537,7 +534,7 @@
 
       write (ifl,*)
       ir=ir+1
-      write (ifl,240, advance='NO') ir, boundlines(1)    ! line loop over outer boundary
+      write (ifl,240, advance='NO') ir, boundlines(1)    ! line loop over outer coolant boundary
       do j=2, nbound-1
         write (ifl,252, advance='NO') boundlines(j)
         if (mod(j,10).eq.0) write (ifl,*)  ! break line
@@ -545,8 +542,15 @@
       j=nbound
         write (ifl,254) boundlines(j)
 
-      write (ifl,244) ir
-  244 format ('  Physical Line("OutBC") = {',i0,'};  // outer surface label')
+  ! the physical line has to be list of lines, not a line loop
+
+      write (ifl,244, advance='NO') boundlines(1)    ! line loop over outer coolant boundary
+      do j=2, nbound-1
+        write (ifl,252, advance='NO') boundlines(j)
+        if (mod(j,10).eq.0) write (ifl,*)  ! break line
+      enddo
+      j=nbound
+        write (ifl,254) boundlines(j)
 
       nos=nos+1
       nsave(nos)=ir       ! save outer loop line
@@ -569,8 +573,9 @@
 
       write (ifl,260) ir
 
-  240 format ('  Line Loop(',i0,') ={',10(i0,','))
-  250 format ('  Plane Surface(',i0,') ={',10(i0,','))
+  240 format ('  Line Loop(',i0,')={',10(i0,','))
+  244 format ('  Physical Line("OutBC")={',i0,',')
+  250 format ('  Plane Surface(',i0,')={',10(i0,','))
   252 format (i0,',')
   254 format (i0,'};')
   260 format ('  Physical Surface("RegCool")={',i0,'};')
@@ -580,7 +585,7 @@
       close (ifl)
 
       write (*,*) 'finished writing geo file: tri.geo'
-      write (*,*) 'gmsh tri.geo -format msh22 -2 -save'
+      write (*,*) 'gmsh tri.geo -format msh22 -2'
 
       return
       end subroutine trigeo
