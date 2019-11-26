@@ -15,32 +15,45 @@
 !  4. Export -> GMSH -> Version 2.0 Ascii to save the mesh to a ".msh" file
 !  5. Run the "msh2vtk" utility to convert to VTK
 !
-!  Notes:
+!  Usage:
+!    createtri [nedge]
+!
+!  where [nedge] is the number of triangle edges on the boundary, must be divisible by 3
+!
+!  Usage Notes:
 !   * You have to export to version 2 msh file, the new version is 4 and doesn't work
 !        They added a lot of new information to version 4
 !   * GMSH will export a VTK file, but it is only the mesh.  It doesn't contain material info.
 !
-! To-do: *** create outer boundary condition
-!    current line loop is for moderator, need to make new line for outer boundary
-!    not sure why outbc is not being written.  Maybe convert line loop to list of lines?
+!-----------------------------------------------------------------------
+!  Programming Notes:
+!
+!    Rod numbers start in lower left corner, then work around boundary CCW
+!    After all of the boundary rods, the center rods are numbered
+!
+!    The "tricky" parts are defining the loop around the outer coolant, which does
+!    not include the boundary rods
+!
+!    Another tricky part is building up all the lines on the outer boundary
+!
+!  Future work:
+!    1. Reading user input instead of hardwired geometry values
 !
 !=======================================================================
 
       integer :: i
       integer :: ia
-
       integer :: nrod  ! rod counter
       integer :: jrow
-
       integer :: ioff
 
-      real(8) :: xc, yc
+      real(8) :: xc, yc    ! rod center coordinates
       real(8) :: x1, x2
       real(8) :: pedge     ! edge of triangle width = hside/sqrt(3)
 
-      character(len=20) :: clopt
+      character(len=20) :: clopt    ! command line option
 
-! hardwire geometry (should come from input)
+! hardwire geometry (should come from input in the future)
 
       integer :: nedge=24  ! number of triangle edges across (must be divisible by 3)
 
@@ -49,10 +62,10 @@
 
 ! rod data arrays
 
-      real(8), allocatable :: rodxy(:,:)    ! (2,numrod)
-      integer, allocatable :: rodtype(:)    ! (numrod)
+      real(8), allocatable :: rodxy(:,:)    ! (2,numrod)  rod coordinates
+      integer, allocatable :: rodtype(:)    ! (numrod)    rod types (define edge rods)
 
-!--- read number of pins across from command line (optional)
+!--- read number of rods across from command line (optional)
 
      ia=iargc()
      if (ia.gt.0) then
@@ -131,7 +144,7 @@
          rodtype(nrod)=6
       enddo
 
-!---- full pins away from edges
+!---- full rods away from edges
 
       ioff=1
       do jrow=nedge, 2, -1   ! skip very top
@@ -183,10 +196,10 @@
 
 !--- local
 
-      integer :: j
 
       integer :: ifl=20   ! output file unit
 
+      integer :: j
       integer :: np       ! point number
       integer :: ir       ! region number
       integer :: nrod     ! rod counter
@@ -197,10 +210,12 @@
       integer :: npstart              ! pointers
 
       integer :: nos                    ! number of rod regions
-      integer :: nbound                 ! number of boundary lines
+      integer :: ncool                  ! number of coolant boundary lines
+      integer :: nbound                 ! number of outer boundary lines
       integer :: lastbpt                ! save last boundary point for connecting line
-      integer, allocatable :: nsave(:)  ! save rod regions to define final moderator region
-      integer, allocatable :: boundlines(:)  ! save boundary lines for final moderator region
+      integer, allocatable :: nsave(:)  ! save rod regions to define final coolant region
+      integer, allocatable :: coollines(:)   ! save boundary lines for final coolant region
+      integer, allocatable :: boundlines(:)  ! save boundary lines for final outer boundary
 
       real(8) :: xc, yc
       real(8) :: rad1
@@ -211,12 +226,17 @@
       allocate (nsave(numrod+1))
       nsave=0
 
+      allocate (coollines(4*numrod))    ! over allocate
       allocate (boundlines(4*numrod))   ! over allocate
+      ncool=0
       nbound=0
+
+      np=0   ! number of points so far
+      ir=0   ! region number so far  (lines and loops)
 
       open (ifl,file='tri.geo')
 
-!--- create mesh
+!--- create mesh header info
 
       write (ifl,*)
       write (ifl,'(a)') '//  Triangle Mesh Generator '
@@ -230,9 +250,6 @@
       write (ifl,'(a)') 'General.BackgroundGradient=0; '
       write (ifl,'(a)') 'General.Color.Background={63,255,50};'
 
-      np=3   ! number of points so far
-      ir=4   ! region number so far  (lines and loop)
-
 !--- loop over each fuel rod
 
   120 format (/,'// ==============================', &
@@ -240,7 +257,7 @@
 
   130 format ('  Point(',i0,') = {',f12.8,',',f12.8,', 0, lc};')
 
-  ! circles are circle arcs - define start point, center, end point
+  ! circles are defined with circle arcs - input start point, center, end point
   140 format ('  Circle(',i0,') = {',i0,',',i0,',',i0,'};')
   142 format ('  Line(',i0,') = {',i0,',',i0,'};')
 
@@ -254,7 +271,7 @@
         xc=rodxy(1,nrod)
         yc=rodxy(2,nrod)
 
-        rad1=rfuel  ! fuel pin   ! look up rod sizes here
+        rad1=rfuel  ! fuel rod   ! look up rod sizes here
 
         irline=0
 
@@ -276,13 +293,17 @@
 
           ir=ir+1
           write (ifl,142) ir, nc, np1          ! line
+          nbound=nbound+1
+          boundlines(nbound)=-ir    ! save outer boundary
           ir=ir+1
           write (ifl,140) ir, np1, nc, np2     ! circle arc
-          nbound=nbound+1
-          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          ncool=ncool+1
+          coollines(ncool)=ir    ! save circle arc for coolant boundary
           lastbpt=np2            ! save last point of boundary arc
           ir=ir+1
           write (ifl,142) ir, np2, nc          ! line
+          nbound=nbound+1
+          boundlines(nbound)=-ir    ! save outer boundary
 
           ir=ir+1
           irline=ir
@@ -303,19 +324,25 @@
           write (ifl,130) np, xc-rad1*0.5d0, yc+rad1*0.5d0*sqrt(3.0d0)   ! top point on curve
 
           ir=ir+1
-          write (ifl,142) ir, lastbpt, np1  ! boundary line
+          write (ifl,142) ir, lastbpt, np1  ! boundary line between rods
+          ncool=ncool+1
+          coollines(ncool)=ir
           nbound=nbound+1
-          boundlines(nbound)=ir  ! boundary line
+          boundlines(nbound)=ir
 
           ir=ir+1
           write (ifl,140) ir, np1, nc, np2     ! fuel circles
-          nbound=nbound+1
-          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          ncool=ncool+1
+          coollines(ncool)=ir  ! save circle arc for coolant boundary
           lastbpt=np2            ! save last point of boundary arc
           ir=ir+1
           write (ifl,142) ir, np2, nc          ! line
           ir=ir+1
           write (ifl,142) ir, nc, np1         ! line
+          nbound=nbound+1
+          boundlines(nbound)=-ir    ! save outer boundary
+          nbound=nbound+1
+          boundlines(nbound)=-(ir-1)    ! save outer boundary
 
           ir=ir+1
           irline=ir
@@ -336,19 +363,25 @@
           write (ifl,130) np, xc-rad1*0.5d0, yc-rad1*0.5d0*sqrt(3.0d0)  ! left point on curve
 
           ir=ir+1
-          write (ifl,142) ir, lastbpt, np1  ! boundary line
+          write (ifl,142) ir, lastbpt, np1  ! boundary line between rods
+          ncool=ncool+1
+          coollines(ncool)=ir
           nbound=nbound+1
-          boundlines(nbound)=ir  ! boundary line
+          boundlines(nbound)=ir
 
           ir=ir+1
           write (ifl,140) ir, np1, nc, np2    ! fuel circles
-          nbound=nbound+1
-          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          ncool=ncool+1
+          coollines(ncool)=ir  ! save circle arc for coolant boundary
           lastbpt=np2            ! save last point of boundary arc
           ir=ir+1
           write (ifl,142) ir, np2, nc         ! line
           ir=ir+1
           write (ifl,142) ir, nc, np1         ! line
+          nbound=nbound+1
+          boundlines(nbound)=-ir    ! save outer boundary
+          nbound=nbound+1
+          boundlines(nbound)=-(ir-1)    ! save outer boundary
 
           ir=ir+1
           irline=ir
@@ -372,23 +405,29 @@
           write (ifl,130) np, xc+rad1, yc   ! right
 
           ir=ir+1
-          write (ifl,142) ir, lastbpt, np1  ! boundary line
+          write (ifl,142) ir, lastbpt, np1  ! boundary line between rods
+          ncool=ncool+1
+          coollines(ncool)=ir
           nbound=nbound+1
-          boundlines(nbound)=ir  ! boundary line
+          boundlines(nbound)=ir
 
           ir=ir+1
           write (ifl,140) ir, np1, nc, np2   ! fuel circles
-          nbound=nbound+1
-          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          ncool=ncool+1
+          coollines(ncool)=ir  ! save circle arc for coolant boundary
           ir=ir+1
           write (ifl,140) ir, np2, nc, np3
-          nbound=nbound+1
-          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          ncool=ncool+1
+          coollines(ncool)=ir  ! save circle arc for coolant boundary
           lastbpt=np3            ! save last point of boundary arc
           ir=ir+1
           write (ifl,142) ir, np3, nc    ! line
           ir=ir+1
           write (ifl,142) ir, nc,  np1   ! line
+          nbound=nbound+1
+          boundlines(nbound)=-ir    ! save outer boundary
+          nbound=nbound+1
+          boundlines(nbound)=-(ir-1)  ! save outer boundary
 
           ir=ir+1
           irline=ir
@@ -412,23 +451,29 @@
           write (ifl,130) np, xc-rad1*0.5d0, yc+rad1*0.5d0*sqrt(3.0d0)   ! top
 
           ir=ir+1
-          write (ifl,142) ir, lastbpt, np1  ! boundary line
+          write (ifl,142) ir, lastbpt, np1  ! boundary line between rods
+          ncool=ncool+1
+          coollines(ncool)=ir
           nbound=nbound+1
-          boundlines(nbound)=ir  ! boundary line
+          boundlines(nbound)=ir
 
           ir=ir+1
           write (ifl,140) ir, np1, nc, np2   ! fuel circles
-          nbound=nbound+1
-          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          ncool=ncool+1
+          coollines(ncool)=ir  ! save circle arc for coolant boundary
           ir=ir+1
           write (ifl,140) ir, np2, nc, np3
-          nbound=nbound+1
-          boundlines(nbound)=ir  ! save circle arc for outer boundary
-          lastbpt=np3            ! save last point of boundary arc
+          ncool=ncool+1
+          coollines(ncool)=ir  ! save circle arc for coolant boundary
+          lastbpt=np3          ! save last point of boundary arc
           ir=ir+1
           write (ifl,142) ir, np3, nc    ! line
           ir=ir+1
           write (ifl,142) ir, nc,  np1   ! line
+          nbound=nbound+1
+          boundlines(nbound)=-ir    ! save outer boundary
+          nbound=nbound+1
+          boundlines(nbound)=-(ir-1)  ! save outer boundary
 
           ir=ir+1
           irline=ir
@@ -452,23 +497,29 @@
           write (ifl,130) np, xc-rad1*0.5d0, yc-rad1*0.5d0*sqrt(3.0d0)   ! bottom
 
           ir=ir+1
-          write (ifl,142) ir, lastbpt, np1  ! boundary line
+          write (ifl,142) ir, lastbpt, np1  ! boundary line between rods
+          ncool=ncool+1
+          coollines(ncool)=ir
           nbound=nbound+1
-          boundlines(nbound)=ir  ! boundary line
+          boundlines(nbound)=ir
 
           ir=ir+1
           write (ifl,140) ir, np1, nc, np2   ! fuel circles
-          nbound=nbound+1
-          boundlines(nbound)=ir  ! save circle arc for outer boundary
+          ncool=ncool+1
+          coollines(ncool)=ir  ! save circle arc for coolant boundary
           ir=ir+1
           write (ifl,140) ir, np2, nc, np3
-          nbound=nbound+1
-          boundlines(nbound)=ir  ! save circle arc for outer boundary
-          lastbpt=np3            ! save last point of boundary arc
+          ncool=ncool+1
+          coollines(ncool)=ir  ! save circle arc for coolant boundary
+          lastbpt=np3          ! save last point of boundary arc
           ir=ir+1
           write (ifl,142) ir, np3, nc   ! line
           ir=ir+1
           write (ifl,142) ir, nc,  np1  ! line
+          nbound=nbound+1
+          boundlines(nbound)=-ir    ! save outer boundary
+          nbound=nbound+1
+          boundlines(nbound)=-(ir-1)  ! save outer boundary
 
           ir=ir+1
           irline=ir
@@ -508,7 +559,7 @@
           write (ifl,150) irline, ir-4, ir-3, ir-2, ir-1, 'fuel rod surface'
 
           nos=nos+1           ! only save full rods, not partial rods on boundary
-          nsave(nos)=irline   ! save rod loop line to define moderator
+          nsave(nos)=irline   ! save rod loop line to define coolant
 
         endif
 
@@ -529,31 +580,35 @@
 
       ir=ir+1
       write (ifl,142) ir, lastbpt, npstart  ! last connecting boundary line
+      ncool=ncool+1
+      coollines(ncool)=ir
       nbound=nbound+1
       boundlines(nbound)=ir
 
       write (ifl,*)
       ir=ir+1
-      write (ifl,240, advance='NO') ir, boundlines(1)    ! line loop over outer coolant boundary
-      do j=2, nbound-1
-        write (ifl,252, advance='NO') boundlines(j)
+      write (ifl,240, advance='NO') ir, coollines(1)    ! line loop over outer coolant boundary
+      do j=2, ncool-1
+        write (ifl,252, advance='NO') coollines(j)
         if (mod(j,10).eq.0) write (ifl,*)  ! break line
       enddo
-      j=nbound
-        write (ifl,254) boundlines(j)
-
-  ! the physical line has to be list of lines, not a line loop
-
-      write (ifl,244, advance='NO') boundlines(1)    ! line loop over outer coolant boundary
-      do j=2, nbound-1
-        write (ifl,252, advance='NO') boundlines(j)
-        if (mod(j,10).eq.0) write (ifl,*)  ! break line
-      enddo
-      j=nbound
-        write (ifl,254) boundlines(j)
+      j=ncool
+        write (ifl,254) coollines(j)
 
       nos=nos+1
       nsave(nos)=ir       ! save outer loop line
+
+! the physical line has to be list of lines, not a line loop
+
+! *** should be deleted in final release ***************
+
+!x    write (ifl,244, advance='NO') coollines(1)    ! line loop over outer coolant boundary
+!x    do j=2, ncool-1
+!x      write (ifl,252, advance='NO') coollines(j)
+!x      if (mod(j,10).eq.0) write (ifl,*)  ! break line
+!x    enddo
+!x    j=ncool
+!x      write (ifl,254) coollines(j)
 
 !--- define final surface labels
 !  this is tricky because we have to write a long line of numbers that
@@ -574,13 +629,32 @@
       write (ifl,260) ir
 
   240 format ('  Line Loop(',i0,')={',10(i0,','))
-  244 format ('  Physical Line("OutBC")={',i0,',')
+!x244 format ('  Physical Line("CoolBnd")={',i0,',')
+  246 format ('  Physical Line("OutBC")={',i0,',')
   250 format ('  Plane Surface(',i0,')={',10(i0,','))
   252 format (i0,',')
   254 format (i0,'};')
   260 format ('  Physical Surface("RegCool")={',i0,'};')
 
       write (ifl,*)
+
+!--- write outer boundary of problem (boundary conditions)
+
+      write (ifl,'(/,a)') '//===================================================='
+      write (ifl,'(  a)') '//  define outer boundary of problem'
+      write (ifl,*)
+
+  ! the physical line has to be list of lines, not a line loop
+
+      write (ifl,246, advance='NO') boundlines(1)    ! line loop over outer boundary
+      do j=2, nbound-1
+        write (ifl,252, advance='NO') boundlines(j)
+        if (mod(j,10).eq.0) write (ifl,*)  ! break line
+      enddo
+      j=nbound
+        write (ifl,254) boundlines(j)
+
+!--- close file
 
       close (ifl)
 
