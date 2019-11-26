@@ -38,8 +38,6 @@
       integer :: nelx=0
       integer :: itype, ntag, itag(10)
 
-      logical :: ifmesh3
-
       real(8) :: vsum
       real(8) :: xver
       real(8) :: xmax, xmin, ymax, ymin
@@ -47,8 +45,9 @@
 !  names can be either regions or surfaces - check type
 
       integer, allocatable :: inametype(:)         ! (nname)    ! name type (1=surface, 2=region)
-      integer, allocatable :: inamenum(:)          ! (nname)    ! name number
+      integer, allocatable :: inamenum(:)          ! (nname)    ! name number (not in order)
       integer, allocatable :: inamecnt(:)          ! (nname)    ! number of elements in region
+      integer, allocatable :: inumtoj(:)           ! (nname)    ! convert name number to stored number
       real(8), allocatable :: vreg(:)              ! (nname)    ! region areas
       character(len=20), allocatable :: cname(:)   ! (nname)    ! region labels
 
@@ -60,7 +59,6 @@
       integer, allocatable :: isurf2(:)  ! (nnode)   rod surface number
       integer, allocatable :: imesh1(:)  ! (nelem)   region numbers
       integer, allocatable :: imesh2(:)  ! (nelem)
-      integer, allocatable :: imesh3(:)  ! (nelem)
       integer, allocatable :: imesh4(:)  ! (nelem)   region types (calculated from names)
 
       character(len=7)   :: c7
@@ -154,9 +152,11 @@
 
       allocate (inametype(nname))  ! region type
       allocate (inamenum(nname))   ! region number
+      allocate (inumtoj(nname))    ! convert region number to stored number
       allocate (cname(nname))      ! region labels
       inametype(:)=0
       inamenum(:)=0
+      inumtoj(:)=0
 
       cname(:)=' '
 
@@ -182,6 +182,14 @@
   120 format (2i5,' region  ', a)
   122 format (2i5,' surface ', a)
 
+      do i=1, nname
+        k=inamenum(i)
+        if (inumtoj(k).eq.0) then
+           inumtoj(k)=i
+        else
+           stop 'error filling mapping function'
+        endif
+      enddo
 
 !--- read nodes
 !      $Nodes
@@ -241,17 +249,13 @@
       allocate (gg(iorder,nelx))
       allocate (imesh1(nelx))   ! tag1 - region numbers
       allocate (imesh2(nelx))   ! tag2 - surface
-      allocate (imesh3(nelx))   ! tag3 - ??  not used in 2D problems?
-
       allocate (isurf1(nnode))
       allocate (isurf2(nnode))
       isurf1(:)=0
       isurf2(:)=0
       csurf1='surf'
-
       imesh1(:)=-10
       imesh2(:)=-10
-      imesh3(:)=-10
       nelem=0            ! only save triangle elements, gg is allocated too big
       do i=1, nelx
          read (12,'(a)') line
@@ -263,7 +267,6 @@
            read (line,*) ii, itype, ntag, itag(1:ntag), gg(1:3,nelem)
            if (ntag.ge.1) imesh1(nelem)=itag(1)    ! region numbers (e.g. 4,5,6)
            if (ntag.ge.2) imesh2(nelem)=itag(2)    ! geometry entity (15,17,18)
-           if (ntag.ge.3) imesh3(nelem)=itag(3)
          elseif (itype.eq.1) then
            read (line,*) ii, itype, ntag, itag(1:ntag), i1, i2
            if (ntag.ge.1) isurf1(i1)=itag(1)   ! if this is a line surface, assign to 2 nodes
@@ -320,7 +323,6 @@
 !--- check region data
 !     imesh1- region numbers  (4,5,6)
 !     imesh2- geometry entity (15,17,18)
-!     imesh3- not used?  (in version 2.1 only?)
 
       write (*,*)
       write (*,*) 'check 2D regions: '
@@ -331,18 +333,9 @@
       inamecnt(:)=0
 
       do i=1, nelem
-        j=imesh1(i)   ! region number, need to find region in list
-        kk=0
-        do k=1, nname
-          if (inamenum(k).eq.j) kk=k
-        enddo
-        if (kk.eq.0) then
-          write (*,*) '*** ERROR: could not find region for element/region ', i, j
-!         stop 'region number not found'
-        else
-          inamecnt(kk)=inamecnt(kk)+1
-          vreg(kk)  =vreg(kk)+elarea(i)
-        endif
+        kk=inumtoj(imesh1(i))   ! convert name number to stored number
+        inamecnt(kk)=inamecnt(kk)+1
+        vreg(kk)  =vreg(kk)+elarea(i)
       enddo
 
   220 format (' sum of region',2i5,1x,a,i6, f12.6)
@@ -384,15 +377,10 @@
         if (j.eq.0) then
           nzero=nzero+1
         else
-          kk=0
-          do k=1, nname
-            if (inamenum(k).eq.j) kk=k
-          enddo
-          if (kk.gt.0) then
-             inamecnt(kk)=inamecnt(kk)+1
-             csurf1=cname(kk)
-             if (inametype(kk).ne.1) stop 'surface type is not 1'
-          endif
+          kk=inumtoj(isurf1(i))   ! convert name number to stored number
+          inamecnt(kk)=inamecnt(kk)+1
+          csurf1=cname(kk)
+          if (inametype(kk).ne.1) stop 'surface type is not 1'
         endif
       enddo
 
@@ -408,15 +396,8 @@
       write (*,*) 'sum of surfaces', ii
       write (*,*) 'nnode          ', nnode
 
-!--- check mesh3 - not used with new file version?
-
-      ifmesh3=.false.    ! flag to write mesh3 to VTK file
-      do i=1, nelem
-        if (imesh3(i).ne.-10) then
-           write (*,*) 'imesh3', i, imesh3(i)
-           ifmesh3=.true.
-        endif
-      enddo
+      deallocate (inamecnt)
+      deallocate (vreg)
 
 !--- define region types (hardwired to names)
 
@@ -429,25 +410,22 @@
       imesh4(:)=0
       do i=1, nelem
         j=imesh1(i)   ! region number, need to find region in list
-        kk=0
-        do k=1, nname
-          if (inamenum(k).eq.j) kk=k
-        enddo
-        if (kk.eq.0) then
-          write (*,*) '*** ERROR: could not find region for element/region ', i, j
-!         stop 'region number not found'
-        else
-          c7=cname(kk)(1:7)
-          if     (c7.eq.'RegFuel') then
-            imesh4(i)=1
-          elseif (c7.eq.'RegClad') then
-            imesh4(i)=2
-          elseif (c7.eq.'RegCool') then
-            imesh4(i)=3
-          endif
+        kk=inumtoj(imesh1(i))   ! convert name number to stored number
+        c7=cname(kk)(1:7)
+        if     (c7.eq.'RegFuel') then
+          imesh4(i)=1
+        elseif (c7.eq.'RegClad') then
+          imesh4(i)=2
+        elseif (c7.eq.'RegCool') then
+          imesh4(i)=3
         endif
 !       write (*,*) 'element ', i, kk, imesh4(i)
       enddo
+
+      deallocate (inametype)
+      deallocate (inamenum)
+      deallocate (inumtoj)
+      deallocate (cname)
 
 !--- write to VTK file
 
@@ -462,7 +440,6 @@
       call vtk_tri2(22, nnode, isurf2, 'surf2',  ' ')
       call vtk_tri2(22, nelem, imesh1, 'region', 'e')  ! elem data
       call vtk_tri2(22, nelem, imesh2, 'geom_entity', ' ')
-      if (ifmesh3) call vtk_tri2(22, nelem, imesh3, 'imesh3', ' ')
       call vtk_tri2(22, nelem, imesh4, 'regtype', ' ')
       close (22)
 
@@ -477,7 +454,7 @@
 
       deallocate (xi,gg)
       deallocate (isurf1, isurf2)
-      deallocate (imesh1, imesh2, imesh3)
+      deallocate (imesh1, imesh2)
       deallocate (elarea)
       deallocate (imesh4)
       end
