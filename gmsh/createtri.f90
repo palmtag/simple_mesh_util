@@ -7,7 +7,8 @@
 !  To generate different lattice sizes, change the value of "nedge" below
 !
 !  Scott Palmtag
-!  November 15, 2019
+!  2019-11-15 - original version
+!  2019-12-05 - major revision to change orientation to support full rods along bottom
 !
 !  1. Run this program to generate ".geo" files
 !  2. Load ".geo" file into GMSH
@@ -16,9 +17,11 @@
 !  5. Run the "msh2vtk" utility to convert to VTK
 !
 !  Usage:
-!    createtri [nedge]
+!    createtri [nedge] {irodside}
 !
-!  where [nedge] is the number of triangle edges on the boundary, must be divisible by 3
+!  where:
+!    [nedge]    is the number of hex edges (flat to flat) on the boundary (length)
+!    {irodside} is the number of rods along one side (partial or full) (integer) (optional)
 !
 !  Usage Notes:
 !   * You have to export to version 2 msh file, the new version is 4 and doesn't work
@@ -28,37 +31,45 @@
 !-----------------------------------------------------------------------
 !  Programming Notes:
 !
-!    Rod numbers start in lower left corner, then work around boundary CCW
-!    After all of the boundary rods, the center rods are numbered
+!    Rod numbers start at top corner, then work around boundary CCW
+!    After all of the boundary rods are numbered, the center rods are numbered
+!      starting in bottom left
 !
-!    The "tricky" parts are defining the loop around the outer coolant, which does
-!    not include the boundary rods
+!    One "tricky" part is building up list of lines around the outer coolant,
+!       which does not include any boundary rods
 !
-!    Another tricky part is building up all the lines on the outer boundary
+!    Another tricky part is building up all the lines on the outer boundary,
+!       which does include the boundary rods
 !
 !  Future work:
 !    1. Reading user input instead of hardwired geometry values
+!    2. Input rod maps to have different rod sizes
+!    3. Investigate - it does not look like gmsh preserves the rod area?
 !
 !=======================================================================
 
       integer :: i
       integer :: ia
-      integer :: nrod  ! rod counter
+      integer :: nrod      ! rod counter
+      integer :: nrodsave  ! rod counter
+      integer :: irodside  ! number of rods along triangle edge
       integer :: jrow
-      integer :: ioff
+      integer :: iend
 
       real(8) :: xc, yc    ! rod center coordinates
-      real(8) :: x1, x2
-      real(8) :: pedge     ! edge of triangle width = hside/sqrt(3)
+      real(8) :: totedge   ! total length of one side of triangle
+
+      logical :: iffull    ! flag for full rods across bottom
 
       character(len=20) :: clopt    ! command line option
 
 ! hardwire geometry (should come from input in the future)
 
-      integer :: nedge=24  ! number of triangle edges across (must be divisible by 3)
+      real(8) :: xedge=4.5d0     ! number of hexes across edge of triangle (default if not read from command line)
+      real(8) :: hflat=1.60d0    ! hexagon flat to flat distance
+      real(8) :: rfuel=0.706d0   ! radius of fuel rod
 
-      real(8) :: hside=1.26d0    ! flat to flat distance across hexagon
-      real(8) :: rfuel=0.4d0     ! radius of fuel rod
+      real(8), parameter :: pi=3.1415926535897932384d0
 
 ! rod data arrays
 
@@ -67,132 +78,175 @@
 
 !--- read number of rods across from command line (optional)
 
-     ia=iargc()
-     if (ia.gt.0) then
-       call getarg(1,clopt)
-       read (clopt,*) nedge
-     endif
+      irodside=0
 
-     write (*,*) 'number of triangles edges across assembly = ', nedge
+      ia=iargc()
+      if (ia.gt.0) then
+        call getarg(1,clopt)
+        read (clopt,*) xedge
+        if (xedge.lt.0.999d0) stop 'minimum problem size is 1'
+      endif
+      if (ia.gt.1) then   ! read number of rods explicitly
+        call getarg(2,clopt)
+        read (clopt,*) irodside
+        if (irodside.lt.2) stop 'minimum problem size is 2 rods'
+      endif
+
+      write (*,*) 'number of hexes across edge of assembly (flat to flat) = ', xedge,' (input)'
 
 !--- initialize
 
-      pedge=hside/sqrt(3.0d0)    ! length on edge of triangle
+      totedge=xedge*hflat
 
-      write (*,*) 'nedge ', nedge
-      write (*,*) 'hex size ', hside,' (flat to flat)'
-      write (*,*) 'triangle size ', pedge
+      write (*,*) 'hex size ', hflat,' (flat to flat) (hard-wire)'
+      write (*,*) 'total length on one side of triangle ', totedge
 
-      if (mod(nedge,3).ne.0) stop 'nedge must be divisible by 3'
+      iffull=.true.
+      if (irodside.eq.0) then    ! calculate size, was not input
+        if (abs(xedge - nint(xedge)).lt.0.001) then
+          iffull=.false.
+          write (*,*) 'bottom row is split rods'
+          irodside=nint(xedge)+1
+        else
+          write (*,*) 'bottom row is full rods'
+          irodside=int(xedge)+1
+        endif
+      endif
 
-      nrod=nedge*nedge  ! over allocate storage arrays
+!  **** need to error check that we don't partially split rods in bottom row
+
+      nrod=(irodside*(irodside+1))/2    ! total rods in problem
+      nrodsave=nrod
+
+      write (*,*) 'number of rods across triangle edge ', irodside
+      write (*,*) 'total number of rods in problem     ', nrod
+
+      write (*,*) 'total triangle area                  ', totedge*totedge*0.25d0*sqrt(3.0d0)
+      write (*,*) 'single rod area                      ', pi*rfuel*rfuel
+
       allocate (rodxy(2,nrod))
       allocate (rodtype(nrod))
       rodxy(:,:)=10000.0d0
       rodtype(:)=0
 
-!--- loop over each fuel rod and determine center coordinates
-!---  Work around outer boundary in a loop
+!--- loop over each fuel rod and determine coordinates and type of each rod
+!--- Work around outer boundary fist, start at top and work counter-clockwise
 
       nrod=0
 
-!--- lower left corner rod (partial rod)
+!--- top center corner rod (partial rod)
 
       nrod=nrod+1
-      rodxy(1,nrod)=0.0d0
-      rodxy(2,nrod)=0.0d0
+      rodxy(1,nrod)=totedge*0.5d0
+      rodxy(2,nrod)=totedge*0.5d0*sqrt(3.0d0)
       rodtype(nrod)=1
 
-!--- rods across bottom half of triangle (half rods)
+!--- rods across left side of triangle (half rods)
 
-      do i=1, nedge/3-1    ! half rods
+      do i=2, irodside        ! half rods
          nrod=nrod+1
-         rodxy(1,nrod)=i*3*pedge
-         rodxy(2,nrod)=0.0d0
-         rodtype(nrod)=4
+         rodxy(1,nrod)=rodxy(1,nrod-1)-hflat*0.5d0
+         rodxy(2,nrod)=rodxy(2,nrod-1)-hflat*0.5d0*sqrt(3.0d0)
+         rodtype(nrod)=4      ! half rod left side
       enddo
 
-!--- lower right rod in corner of triangle (partial rod)
+!--- lower left rod in corner of triangle (partial rod)
+
+      if (.not.iffull) then   ! reset corner code if it is in corner
+        rodxy(1,nrod)=0.0d0
+        rodxy(2,nrod)=0.0d0
+        rodtype(nrod)=2       ! corner rod lower left
+      endif
+
+!--- edge rods bottom side of triangle (type 5)
+
+      if (.not.iffull) then   ! fill half rods, otherwise skip
+        do i=2, irodside-1    ! half rods
+           nrod=nrod+1
+           rodxy(1,nrod)=rodxy(1,nrod-1) + hflat
+           rodxy(2,nrod)=rodxy(2,nrod-1)
+           rodtype(nrod)=5    ! half rod on bottom
+        enddo
+      endif
+
+!--- lower right rod in triangle (partial rod)
 
       nrod=nrod+1
-      rodxy(1,nrod)=nedge*pedge
-      rodxy(2,nrod)=0.0d0
-      rodtype(nrod)=2
+      if (iffull) then
+        rodxy(1,nrod)=(totedge+(irodside-1)*hflat)*0.5d0
+      else
+        rodxy(1,nrod)=rodxy(1,nrod-1) + hflat
+      endif
+      rodxy(2,nrod)=rodxy(2,nrod-1)
+      if (iffull) then
+        rodtype(nrod)=6   ! half rod
+      else
+        rodtype(nrod)=3   ! corner rod lower right
+      endif
 
-!--- edge rods right side of triangle (type 5)
+!--- edge rods right side of triangle  (type 6)
 
-      do i=1, nedge/3-1    ! half rods
+      do i=2, irodside-1     ! half rods
          nrod=nrod+1
-         rodxy(1,nrod)=nedge*pedge-i*3*pedge*0.5d0
-         rodxy(2,nrod)=i*3*pedge*0.5d0*sqrt(3.0d0)
-         rodtype(nrod)=5
+         rodxy(1,nrod)=rodxy(1,nrod-1)-hflat*0.5d0
+         rodxy(2,nrod)=rodxy(2,nrod-1)+hflat*0.5d0*sqrt(3.0d0)
+         rodtype(nrod)=6     ! half rod right side
       enddo
 
-!--- upper rod in triangle (partial rod)
-
-      nrod=nrod+1
-      rodxy(1,nrod)=nedge*pedge*0.5d0
-      rodxy(2,nrod)=nedge*pedge*0.5d0*sqrt(3.0d0)
-      rodtype(nrod)=3
-
-!--- edge rods left side of triangle  (type 6)
-
-      do i=nedge/3-1, 1, -1    ! half rods
-         nrod=nrod+1
-         rodxy(1,nrod)=i*3*pedge*0.5d0
-         rodxy(2,nrod)=i*3*pedge*0.5d0*sqrt(3.0d0)
-         rodtype(nrod)=6
-      enddo
+      write (*,*) 'number of rods on boundary ', nrod
 
 !---- full rods away from edges
+!   start on top and right then down
 
-      ioff=1
-      do jrow=nedge, 2, -1   ! skip very top
+      iend=irodside                      ! full rods on bottom
+      if (.not.iffull) iend=irodside-1   ! half rods on bottom
 
-          x1=(nedge-jrow+1)*pedge*0.5d0    ! left edge of big triangle
-          x2=nedge*pedge-x1    ! right edge
-
-          xc=x1+ioff*pedge
-          yc=x1*sqrt(3.0d0)
-          ioff=ioff+1
-          if (ioff.gt.3) ioff=1
-
-          if (xc+pedge*0.5d0.ge.x2) cycle  ! some rows have no rods
-
-          do
-            nrod=nrod+1
-
-            rodxy(1,nrod)=xc
-            rodxy(2,nrod)=yc
-            rodtype(nrod)=0
-
-            xc=xc+3.0d0*pedge
-            if (xc+pedge*0.5d0 .gt. x2) exit
-          enddo
-      enddo   ! jrow
+      do jrow=3, iend
+        xc=rodxy(1,jrow)
+        yc=rodxy(2,jrow)
+        do i=1, jrow-2        ! number of rods across in center
+           xc=xc + hflat
+           nrod=nrod+1
+           rodxy(1,nrod)=xc
+           rodxy(2,nrod)=yc
+           rodtype(nrod)=0    ! full rod
+         enddo
+      enddo      ! jrow
 
 !--- create geo file
 
-      write (*,*) 'number of rods in problem = ', nrod
+      write (*,*) 'number of rods in problem  ', nrod
+      if (nrod.ne.nrodsave) stop 'rod count error'
 
-      call trigeo(rfuel, nrod, rodxy, rodtype)
+      write (*,*) 'deltax', hflat*0.5d0
+      write (*,*) 'deltay', hflat*0.5d0*sqrt(3.0d0)
+
+      write (*,*) 'list of rods:'
+      do i=1, nrod
+        write (*,100) i, rodtype(i), rodxy(:,i)
+      enddo
+  100 format (2i4,2f12.6)
+
+      call trigeo(rfuel, nrod, rodxy, rodtype, iffull, irodside, totedge)
 
       end
 
 !=======================================================================
-
-      subroutine trigeo(rfuel, numrod, rodxy, rodtype)
-      implicit none
-!-----------------------------------------------------------------------
 !
 !  Subroutine to write list of rods to ".geo" file
 !
-!-----------------------------------------------------------------------
+!=======================================================================
+
+      subroutine trigeo(rfuel, numrod, rodxy, rodtype, iffull, irodside, totedge)
+      implicit none
 
       real(8), intent(in) :: rfuel    ! fuel rod radii (should be array)
       integer, intent(in) :: numrod   ! total number of rods
       real(8), intent(in) :: rodxy(2,numrod)  ! center coordinates
       integer, intent(in) :: rodtype(numrod)  ! rod types
+      logical, intent(in) :: iffull           ! flag for full rods across bottom
+      integer, intent(in) :: irodside         ! flag for full assembly
+      real(8), intent(in) :: totedge          ! total length of triangle
 
 !--- local
 
@@ -275,7 +329,40 @@
 
         irline=0
 
-        if (rodtype(nrod).eq.1) then     ! lower left corner sixth rod
+        if (rodtype(nrod).eq.1) then   ! top corner rod sixth
+
+          write (ifl,120) nrod, 'upper partial rod'
+
+          np=np+1
+          nc=np  ! save rod center
+          write (ifl,130) np, xc, yc
+          np=np+1
+          np1=np  ! save
+          npstart=np  ! save starting point of boundary
+          write (ifl,130) np, xc+rad1*0.5d0, yc-rad1*0.5d0*sqrt(3.0d0)  ! right point on curve
+          np=np+1
+          np2=np  ! save
+          write (ifl,130) np, xc-rad1*0.5d0, yc-rad1*0.5d0*sqrt(3.0d0)  ! left point on curve
+
+          ir=ir+1
+          write (ifl,140) ir, np1, nc, np2    ! fuel circles
+          ncool=ncool+1
+          coollines(ncool)=ir  ! save circle arc for coolant boundary
+          lastbpt=np2            ! save last point of boundary arc
+          ir=ir+1
+          write (ifl,142) ir, np2, nc         ! line
+          ir=ir+1
+          write (ifl,142) ir, nc, np1         ! line
+          nbound=nbound+1
+          boundlines(nbound)=-ir    ! save outer boundary
+          nbound=nbound+1
+          boundlines(nbound)=-(ir-1)    ! save outer boundary
+
+          ir=ir+1
+          irline=ir
+          write (ifl,152) irline, ir-3, ir-2, ir-1, 'rod surface'
+
+        elseif (rodtype(nrod).eq.2) then     ! lower left corner sixth rod
 
           write (ifl,120) nrod, 'lower left partial rod'
 
@@ -285,11 +372,17 @@
 
           np=np+1
           np1=np  ! save
-          npstart=np  ! save starting point of boundary
           write (ifl,130) np, xc+rad1*0.5d0, yc+rad1*0.5d0*sqrt(3.0d0)   ! top point on curve
           np=np+1
           np2=np  ! save
           write (ifl,130) np, xc+rad1, yc      ! bottom point on curve
+
+          ir=ir+1
+          write (ifl,142) ir, lastbpt, np1  ! boundary line between rods
+          ncool=ncool+1
+          coollines(ncool)=ir
+          nbound=nbound+1
+          boundlines(nbound)=ir
 
           ir=ir+1
           write (ifl,142) ir, nc, np1          ! line
@@ -309,7 +402,7 @@
           irline=ir
           write (ifl,152) irline, ir-3, ir-2, ir-1, 'surface for partial rod'
 
-        elseif (rodtype(nrod).eq.2) then   ! lower right corner rod sixth
+        elseif (rodtype(nrod).eq.3) then   ! lower right corner rod sixth
 
           write (ifl,120) nrod, 'lower right partial rod'
 
@@ -348,46 +441,7 @@
           irline=ir
           write (ifl,152) irline, ir-3, ir-2, ir-1, 'rod surface'
 
-        elseif (rodtype(nrod).eq.3) then   ! top corner rod sixth
-
-          write (ifl,120) nrod, 'upper partial rod'
-
-          np=np+1
-          nc=np  ! save rod center
-          write (ifl,130) np, xc, yc
-          np=np+1
-          np1=np  ! save
-          write (ifl,130) np, xc+rad1*0.5d0, yc-rad1*0.5d0*sqrt(3.0d0)  ! right point on curve
-          np=np+1
-          np2=np  ! save
-          write (ifl,130) np, xc-rad1*0.5d0, yc-rad1*0.5d0*sqrt(3.0d0)  ! left point on curve
-
-          ir=ir+1
-          write (ifl,142) ir, lastbpt, np1  ! boundary line between rods
-          ncool=ncool+1
-          coollines(ncool)=ir
-          nbound=nbound+1
-          boundlines(nbound)=ir
-
-          ir=ir+1
-          write (ifl,140) ir, np1, nc, np2    ! fuel circles
-          ncool=ncool+1
-          coollines(ncool)=ir  ! save circle arc for coolant boundary
-          lastbpt=np2            ! save last point of boundary arc
-          ir=ir+1
-          write (ifl,142) ir, np2, nc         ! line
-          ir=ir+1
-          write (ifl,142) ir, nc, np1         ! line
-          nbound=nbound+1
-          boundlines(nbound)=-ir    ! save outer boundary
-          nbound=nbound+1
-          boundlines(nbound)=-(ir-1)    ! save outer boundary
-
-          ir=ir+1
-          irline=ir
-          write (ifl,152) irline, ir-3, ir-2, ir-1, 'rod surface'
-
-        elseif (rodtype(nrod).eq.4) then
+        elseif (rodtype(nrod).eq.5) then
 
           write (ifl,120) nrod, 'bottom row half rod'
 
@@ -433,7 +487,7 @@
           irline=ir
           write (ifl,150) irline, ir-4, ir-3, ir-2, ir-1, 'fuel rod surface'
 
-        elseif (rodtype(nrod).eq.5) then
+        elseif (rodtype(nrod).eq.6) then
 
           write (ifl,120) nrod, 'right edge half rod'
 
@@ -479,7 +533,7 @@
           irline=ir
           write (ifl,150) irline, ir-4, ir-3, ir-2, ir-1, 'fuel rod surface'
 
-        elseif (rodtype(nrod).eq.6) then
+        elseif (rodtype(nrod).eq.4) then
 
           write (ifl,120) nrod, 'left edge half rod'
 
@@ -567,6 +621,40 @@
         write (ifl,160) ir, irline
         write (ifl,230) nrod, ir    ! physical surface of last rod
 
+!--- write straight boundary on right side of triangle iffull
+!      just wrote last rod on lower boundary
+
+        if (iffull .and. nrod.eq.irodside) then
+          np=np+1
+          xc=0.0d0   ! lower left  corner of triangle
+          yc=0.0d0   ! lower left  corner of triangle
+          np1=np
+          write (ifl,130) np, xc, yc
+
+          ir=ir+1
+          write (ifl,142) ir, lastbpt, np  ! boundary line between rods
+          ncool=ncool+1
+          coollines(ncool)=ir
+          nbound=nbound+1
+          boundlines(nbound)=ir
+
+          xc=totedge                       ! lower right corner of triangle
+          yc=0.0d0
+          np=np+1
+          write (ifl,130) np, xc, yc
+
+          ir=ir+1
+          write (ifl,142) ir, np1, np      ! right side of triangle
+          ncool=ncool+1
+          coollines(ncool)=ir
+          nbound=nbound+1
+          boundlines(nbound)=ir
+
+          lastbpt=np
+
+        endif
+
+
       enddo
 
   160 format ('  Plane Surface(',i0,') = {',i0,'};      // fuel region')
@@ -600,16 +688,6 @@
 
 ! the physical line has to be list of lines, not a line loop
 
-! *** should be deleted in final release ***************
-
-!x    write (ifl,244, advance='NO') coollines(1)    ! line loop over outer coolant boundary
-!x    do j=2, ncool-1
-!x      write (ifl,252, advance='NO') coollines(j)
-!x      if (mod(j,10).eq.0) write (ifl,*)  ! break line
-!x    enddo
-!x    j=ncool
-!x      write (ifl,254) coollines(j)
-
 !--- define final surface labels
 !  this is tricky because we have to write a long line of numbers that
 !  can vary with the problem size
@@ -618,13 +696,17 @@
       write (ifl,'(a)')   '//  Define coolant region and label'
 
       ir=ir+1  ! surface
-      write (ifl,250, advance='NO') ir, nsave(1)
-      do j=2, nos-1
-        write (ifl,252, advance='NO') nsave(j)
-        if (mod(j,10).eq.0) write (ifl,*)  ! break line
-      enddo
-      j=nos
-        write (ifl,254) nsave(j)
+      if (nos.eq.1) then    ! special case for small problem
+        write (ifl,255) ir, nsave(1)
+      else
+        write (ifl,250, advance='NO') ir, nsave(1)
+        do j=2, nos-1
+          write (ifl,252, advance='NO') nsave(j)
+          if (mod(j,10).eq.0) write (ifl,*)  ! break line
+        enddo
+        j=nos
+          write (ifl,254) nsave(j)
+      endif
 
       write (ifl,260) ir
 
@@ -632,6 +714,7 @@
 !x244 format ('  Physical Line("CoolBnd")={',i0,',')
   246 format ('  Physical Line("OutBC")={',i0,',')
   250 format ('  Plane Surface(',i0,')={',10(i0,','))
+  255 format ('  Plane Surface(',i0,')={',i0,'};')
   252 format (i0,',')
   254 format (i0,'};')
   260 format ('  Physical Surface("RegCool")={',i0,'};')
