@@ -14,3 +14,8 @@ tri3 - simple square mesh from meshgen/triangle utility
 
 pin17 - 17x17 pincell mesh from gmsh/createlat and gmsh
 
+trilat6 - triangle lattice from gmsh/createtri and gmsh
+
+trilat24 - triangle lattice from gmsh/createtri and gmsh
+
+
