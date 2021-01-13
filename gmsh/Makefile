@@ -19,7 +19,7 @@ msh2vtk.exe: Mod_vtklib3.o writemesh.o msh2vtk.o
 createlat.exe: createlat.o
 	$(FC) $(FFLAGS) $^ -o $@
 
-createtri.exe: createtri.o
+createtri.exe: createtri.o Mod_input.o
 	$(FC) $(FFLAGS) $^ -o $@
 
 Mod_vtklib3.o: ../meshlib/Mod_vtklib3.f90
@@ -33,4 +33,6 @@ writemesh.o: ../meshlib/writemesh.f90
 
 clean:
 	rm -f core *.o *.mod msh2vtk.exe createlat.exe createtri.exe
+
+createtri.o: Mod_input.o
 

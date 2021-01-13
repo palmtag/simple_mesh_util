@@ -1,4 +1,5 @@
    program createtri
+   use mod_input
    implicit none
 !=======================================================================
 !
@@ -21,6 +22,8 @@
 !
 !  where:
 !    [nedge]    is the number of hex edges (flat to flat) on the boundary (length)
+!               the center is always a half rod, so integer values will give you
+!                 half rods on far boundary.
 !    {irodside} is the number of rods along one side (partial or full) (integer) (optional)
 !
 !  Usage Notes:
@@ -52,22 +55,14 @@
       integer :: ia
       integer :: nrod      ! rod counter
       integer :: nrodsave  ! rod counter
-      integer :: irodside  ! number of rods along triangle edge
       integer :: jrow
       integer :: iend
 
       real(8) :: xc, yc    ! rod center coordinates
-      real(8) :: totedge   ! total length of one side of triangle
 
       logical :: iffull    ! flag for full rods across bottom
 
-      character(len=20) :: clopt    ! command line option
-
-! hardwire geometry (should come from input in the future)
-
-      real(8) :: xedge=4.5d0     ! number of hexes across edge of triangle (default if not read from command line)
-      real(8) :: hflat=1.60d0    ! hexagon flat to flat distance
-      real(8) :: rfuel=0.706d0   ! radius of fuel rod
+      character(len=200) :: fname    ! input file name
 
       real(8), parameter :: pi=3.1415926535897932384d0
 
@@ -76,30 +71,27 @@
       real(8), allocatable :: rodxy(:,:)    ! (2,numrod)  rod coordinates
       integer, allocatable :: rodtype(:)    ! (numrod)    rod types (define edge rods)
 
-!--- read number of rods across from command line (optional)
+! values in input module
 
-      irodside=0
+!!    real(8) :: xedge=4.5d0     ! number of hexes across edge of triangle (default if not read from command line)
+!!    real(8) :: hflat=1.60d0    ! hexagon flat to flat distance
+!!    real(8) :: rfuel=0.706d0   ! radius of fuel rod
+!!    integer :: irodside  ! number of rods along triangle edge
+!!    real(8) :: totedge   ! total length of one side of triangle
+
+!--- read input file from command line
 
       ia=iargc()
-      if (ia.gt.0) then
-        call getarg(1,clopt)
-        read (clopt,*) xedge
-        if (xedge.lt.0.999d0) stop 'minimum problem size is 1'
+      if (ia.ne.1) then
+        stop 'usage: createtri [input]'
       endif
-      if (ia.gt.1) then   ! read number of rods explicitly
-        call getarg(2,clopt)
-        read (clopt,*) irodside
-        if (irodside.lt.2) stop 'minimum problem size is 2 rods'
-      endif
+      call getarg(1,fname)
 
-      write (*,*) 'number of hexes across edge of assembly (flat to flat) = ', xedge,' (input)'
+!--- read input
+
+      call readinput(fname)
 
 !--- initialize
-
-      totedge=xedge*hflat
-
-      write (*,*) 'hex size ', hflat,' (flat to flat) (hard-wire)'
-      write (*,*) 'total length on one side of triangle ', totedge
 
       iffull=.true.
       if (irodside.eq.0) then    ! calculate size, was not input
@@ -114,6 +106,7 @@
       endif
 
 !  **** need to error check that we don't partially split rods in bottom row
+!       i.e. values must be even numbers (4, 5) or greater than X.5 (4.6, 8.8)
 
       nrod=(irodside*(irodside+1))/2    ! total rods in problem
       nrodsave=nrod
