@@ -8,7 +8,7 @@ BOUNDS = -fbounds-check
 .SUFFIXES :
 .SUFFIXES : .f90 .o
 
-default: pinmesh.exe square.exe triangle.exe
+default: pinmesh.exe square.exe cube.exe triangle.exe
 
 pinmesh.exe: pinmesh.o Mod_vtklib3.o
 	$(FC) $(FFLAGS) $^ -o $@
@@ -17,6 +17,9 @@ triangle.exe: triangle.o Mod_vtklib3.o
 	$(FC) $(FFLAGS) $^ -o $@
 
 square.exe: square.o Mod_vtklib3.o
+	$(FC) $(FFLAGS) $^ -o $@
+
+cube.exe: cube.o Mod_vtklib3.o
 	$(FC) $(FFLAGS) $^ -o $@
 
 Mod_vtklib3.o: $(MLIB)/Mod_vtklib3.f90
