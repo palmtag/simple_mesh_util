@@ -26,6 +26,8 @@
 
       real(8), parameter :: sqrt3=sqrt(3.0d0)
 
+      character(len=200) :: fbase    ! base input file name without suffix
+
 !  "hflat" is equivalent to Newt "hexprism" times 2
 
    contains
@@ -139,7 +141,7 @@
 
       write (*,*)
 
-!--- calculate number of rods
+!--- calculate number of rods in problem
 
       iffull=.true.
       if (irodside.eq.0) then    ! calculate size, was not input
@@ -147,7 +149,7 @@
           iffull=.false.
           write (*,*) 'bottom row is split rods'
           irodside=nint(xedge)+1
-        elseif (abs(xedge - nint(xedge)).ge.0.5d0) then   ! fraction, so full pin on bottom + possible gap
+        elseif (abs(xedge+0.0001d0 - int(xedge)).ge.0.5d0) then   ! fraction, so full pin on bottom + possible gap
           write (*,*) 'bottom row is full rods'
           irodside=int(xedge)+1
         else
@@ -178,7 +180,6 @@
         irodmap=1    ! default
       endif
   40  format (50i3)
-
 
 !--- finished
 

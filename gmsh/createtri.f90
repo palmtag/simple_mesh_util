@@ -86,6 +86,12 @@
       endif
       call getarg(1,fname)
 
+      fbase=fname
+      i=len_trim(fbase)    ! remove suffix
+      if (i.gt.4) then
+        if (fbase(i-3:i).eq.'.inp') fbase(i-3:i)=' '
+      endif
+
 !--- read input
 
       call readinput(fname)
@@ -202,7 +208,7 @@
       enddo
   100 format (2i4,2f12.6)
 
-      call trigeo(rfuel, nrod, rodxy, rodtype, iffull, irodside, totedge)
+      call trigeo(nrod, rodxy, rodtype)
 
       end
 
@@ -212,16 +218,13 @@
 !
 !=======================================================================
 
-      subroutine trigeo(rfuel, numrod, rodxy, rodtype, iffull, irodside, totedge)
+      subroutine trigeo(numrod, rodxy, rodtype)
+      use mod_input, only : fbase, rfuel, iffull, irodside, totedge
       implicit none
 
-      real(8), intent(in) :: rfuel    ! fuel rod radii (should be array)
       integer, intent(in) :: numrod   ! total number of rods
       real(8), intent(in) :: rodxy(2,numrod)  ! center coordinates
       integer, intent(in) :: rodtype(numrod)  ! rod types
-      logical, intent(in) :: iffull           ! flag for full rods across bottom
-      integer, intent(in) :: irodside         ! flag for full assembly
-      real(8), intent(in) :: totedge          ! total length of triangle
 
 !--- local
 
@@ -263,7 +266,7 @@
       np=0   ! number of points so far
       ir=0   ! region number so far  (lines and loops)
 
-      open (ifl,file='tri.geo')
+      open (ifl,file=trim(fbase)//'.geo')
 
 !--- create mesh header info
 
@@ -716,8 +719,8 @@
 
       close (ifl)
 
-      write (*,*) 'finished writing geo file: tri.geo'
-      write (*,*) 'gmsh tri.geo -format msh22 -2'
+      write (*,'(3a)') ' finished writing geo file: ',trim(fbase),'.geo'
+      write (*,'(3a)') ' gmsh ',trim(fbase), '.geo -format msh22 -2'
 
       return
       end subroutine trigeo
