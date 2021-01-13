@@ -17,9 +17,9 @@
 !       v2.2 seems to generate more nodes and elements, and only makes two "maps" instead of three
 !   2. completely restructure name list
 !
-! Update 11/15/2019 - ??
+! Update 2019/11/15 - ??
 !
-! @version CVS $Id: msh2vtk.f90,v 1.11 2018/07/11 23:14:52 scott Exp $
+! Update 2021/01/13 - tested on GMSH version 4.7.1
 !
 !=======================================================================
       use mod_vtklib3

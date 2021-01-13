@@ -60,8 +60,6 @@
 
       real(8) :: xc, yc    ! rod center coordinates
 
-      logical :: iffull    ! flag for full rods across bottom
-
       character(len=200) :: fname    ! input file name
 
       real(8), parameter :: pi=3.1415926535897932384d0
@@ -78,6 +76,7 @@
 !!    real(8) :: rfuel=0.706d0   ! radius of fuel rod
 !!    integer :: irodside  ! number of rods along triangle edge
 !!    real(8) :: totedge   ! total length of one side of triangle
+!!    logical :: iffull    ! flag for full rods across bottom
 
 !--- read input file from command line
 
@@ -90,23 +89,6 @@
 !--- read input
 
       call readinput(fname)
-
-!--- initialize
-
-      iffull=.true.
-      if (irodside.eq.0) then    ! calculate size, was not input
-        if (abs(xedge - nint(xedge)).lt.0.001) then
-          iffull=.false.
-          write (*,*) 'bottom row is split rods'
-          irodside=nint(xedge)+1
-        else
-          write (*,*) 'bottom row is full rods'
-          irodside=int(xedge)+1
-        endif
-      endif
-
-!  **** need to error check that we don't partially split rods in bottom row
-!       i.e. values must be even numbers (4, 5) or greater than X.5 (4.6, 8.8)
 
       nrod=(irodside*(irodside+1))/2    ! total rods in problem
       nrodsave=nrod
