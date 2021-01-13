@@ -4,12 +4,12 @@
 ! Create Triangle VTK file
 ! VTK files can be read by paraview or visit
 !
-! @version CVS $Id: Mod_vtklib3.f90,v 1.16 2018/07/20 15:16:50 scott Exp $
+! @version CVS $Id: Mod_vtklib3.f90,v 1.17 2020/05/04 02:24:10 palmtag Exp $
 !
 !  VTK file formats:
 !    www.vtk.org/VTK/img/file-formats.pdf
 !
-!  Sample triangluar mesh:
+!  Sample triangular mesh:
 !     http://people.sc.fsu.edu/~jburkardt/data/vtk/triangle_mesh_linear.vtk
 !
 !  2012/08/12 - sample triangular meshes working with VISIT
@@ -29,6 +29,8 @@
 !  2018/04/16 - added option for VTK_QUAD
 !
 !  2018/07/20 - added subroutine to calculate area of triangle
+!
+!  2020/05/03 - print integer distributions as type "int" instead of "float"
 !
 !=======================================================================
 !
@@ -379,7 +381,7 @@
 
 !--- print point data to VTK file for one dataset
 
-  210 format ('SCALARS ',a,' float', &
+  210 format ('SCALARS ',a,' int', &     ! changed from float 5/3/2020
             /,'LOOKUP_TABLE default')
 
       write (*,'(2a)') ' writing VTK distribution: ', trim(label)
@@ -480,7 +482,7 @@
 
 !--- print point data to VTK file for one dataset
 
-  210 format ('SCALARS ',a,' float', &
+  210 format ('SCALARS ',a,' int', &      ! changed from float 5/3/2020
             /,'LOOKUP_TABLE default')
 
       if (label.eq.' ') then
