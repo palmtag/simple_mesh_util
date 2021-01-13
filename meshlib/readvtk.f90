@@ -6,6 +6,7 @@
 
       integer :: i, j, n, i3
       integer :: jsize
+      integer :: itmp
       real(8) :: xtmp
 
       logical :: ifmat
@@ -15,7 +16,7 @@
 
       write (*,'(/,2a)') 'reading VTK file: ', trim(fname)
 
-      open (22,file=fname,status='old')
+      open (22,file=fname,status='old',action='read')
 
 !--- read header
 ! # vtk DataFile Version 2.0
@@ -50,7 +51,7 @@
       read (22,'(a)') line
       read (line,*) c1, nnode, c3
       if (c1.ne.'POINTS') stop 'vtk file missing keyword POINTS'
-      if (c3.ne.'float') stop 'vtk file missing keyword float'
+      if (c3.ne.'float')  stop 'vtk file missing keyword float'
       write (*,*) 'nnode = ', nnode
 
       allocate (xi(3,nnode))
@@ -145,7 +146,7 @@
         read (line,*) c1, ctitle, c3
         if (c1.ne.'SCALARS') stop 'vtk file missing keyword SCALARS'
         write (*,'(1x,2a)') 'reading point data: ', trim(ctitle)
-        if (c3.ne.'float') stop 'vtk file missing keyword float'
+        if (c3.ne.'float' .and. c3.ne.'int') stop 'vtk file missing keywords float or int'
 
         read (22,'(a)') line
         if (line(1:12).ne.'LOOKUP_TABLE') stop 'VTK file missing LOOKUP_TABLE'
@@ -154,8 +155,12 @@
 
         if (ctitle.eq.'material') then
           read (22,*) (matelem(i),i=1,jsize)
-        else
+        elseif (c3.eq.'int') then
+          read (22,*) (itmp,i=1,jsize)
+        elseif (c3.eq.'float') then
           read (22,*) (xtmp,i=1,jsize)
+        else
+          stop 'read error'
         endif
 
       enddo
