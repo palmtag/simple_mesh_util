@@ -67,8 +67,7 @@
 
 ! values in input module
 
-!!    real(8) :: xedge=4.5d0     ! number of hexes across edge of triangle (default if not read from command line)
-!!    real(8) :: hflat=1.60d0    ! hexagon flat to flat distance
+!!    real(8) :: ppitch=1.60d0   ! pin pitch
 !!    real(8) :: rfuel=0.706d0   ! radius of fuel rod
 !!    integer :: irodside  ! number of rods along triangle edge
 !!    real(8) :: totedge   ! total length of one side of triangle
@@ -122,8 +121,8 @@
 
       do i=2, irodside        ! half rods
          nrod=nrod+1
-         rodxy(1,nrod)=rodxy(1,nrod-1)-hflat*0.5d0
-         rodxy(2,nrod)=rodxy(2,nrod-1)-hflat*0.5d0*sqrt(3.0d0)
+         rodxy(1,nrod)=rodxy(1,nrod-1)-ppitch*0.5d0
+         rodxy(2,nrod)=rodxy(2,nrod-1)-ppitch*0.5d0*sqrt(3.0d0)
          rodtype(nrod)=4      ! half rod left side
       enddo
 
@@ -140,7 +139,7 @@
       if (.not.iffull) then   ! fill half rods, otherwise skip
         do i=2, irodside-1    ! half rods
            nrod=nrod+1
-           rodxy(1,nrod)=rodxy(1,nrod-1) + hflat
+           rodxy(1,nrod)=rodxy(1,nrod-1) + ppitch
            rodxy(2,nrod)=rodxy(2,nrod-1)
            rodtype(nrod)=5    ! half rod on bottom
         enddo
@@ -150,9 +149,9 @@
 
       nrod=nrod+1
       if (iffull) then
-        rodxy(1,nrod)=(totedge+(irodside-1)*hflat)*0.5d0
+        rodxy(1,nrod)=(totedge+(irodside-1)*ppitch)*0.5d0
       else
-        rodxy(1,nrod)=rodxy(1,nrod-1) + hflat
+        rodxy(1,nrod)=rodxy(1,nrod-1) + ppitch
       endif
       rodxy(2,nrod)=rodxy(2,nrod-1)
       if (iffull) then
@@ -165,8 +164,8 @@
 
       do i=2, irodside-1     ! half rods
          nrod=nrod+1
-         rodxy(1,nrod)=rodxy(1,nrod-1)-hflat*0.5d0
-         rodxy(2,nrod)=rodxy(2,nrod-1)+hflat*0.5d0*sqrt(3.0d0)
+         rodxy(1,nrod)=rodxy(1,nrod-1)-ppitch*0.5d0
+         rodxy(2,nrod)=rodxy(2,nrod-1)+ppitch*0.5d0*sqrt(3.0d0)
          rodtype(nrod)=6     ! half rod right side
       enddo
 
@@ -182,7 +181,7 @@
         xc=rodxy(1,jrow)
         yc=rodxy(2,jrow)
         do i=1, jrow-2        ! number of rods across in center
-           xc=xc + hflat
+           xc=xc + ppitch
            nrod=nrod+1
            rodxy(1,nrod)=xc
            rodxy(2,nrod)=yc
@@ -195,8 +194,8 @@
       write (*,*) 'number of rods in problem  ', nrod
       if (nrod.ne.nrodsave) stop 'rod count error'
 
-      write (*,*) 'deltax', hflat*0.5d0
-      write (*,*) 'deltay', hflat*0.5d0*sqrt(3.0d0)
+      write (*,*) 'deltax', ppitch*0.5d0
+      write (*,*) 'deltay', ppitch*0.5d0*sqrt(3.0d0)
 
       write (*,*) 'list of rods:'
       do i=1, nrod

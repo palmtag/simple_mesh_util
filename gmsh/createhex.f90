@@ -25,16 +25,10 @@
 !   * GMSH will export a VTK file, but it is only the mesh.  It doesn't contain material info.
 !
 !-----------------------------------------------------------------------
-!  Programming Notes:
-!
-!    Benefits of hex is that you don't have to support partial rods on boundaries.
-!    This makes clad regions much easier to handle
-!
-!-----------------------------------------------------------------------
 !  Future work:
-!    1. Reading user input instead of hardwired geometry values
-!    2. Input rod maps to have different rod sizes
-!    3. Investigate - it does not look like gmsh preserves the rod area?
+!    1. Input rod maps to have different rod sizes
+!    2. Investigate - it does not look like gmsh preserves the rod area?
+!    3. Add channel box (boxth) and outer gap
 !
 !=======================================================================
 
@@ -49,18 +43,8 @@
 ! rod data arrays
 
       real(8), allocatable :: rodxy(:,:)    ! (2,numrod)  rod coordinates
-      integer, allocatable :: rodtype(:)    ! (numrod)    rod types (define edge rods)
 
-! values in input module
-
-!!    real(8) :: xedge=4.5d0     ! number of hexes across edge of triangle (default if not read from command line)
-!!    real(8) :: hflat=1.60d0    ! hexagon flat to flat distance
-!!    real(8) :: rfuel=0.706d0   ! radius of fuel rod
-!!    integer :: irodside  ! number of rods along triangle edge
-!!    real(8) :: totedge   ! total length of one side of triangle
-!!    logical :: iffull    ! flag for full rods across bottom
-
-!--- read input file from command line
+!--- read input file name from command line
 
       ia=iargc()
       if (ia.ne.1) then
@@ -78,27 +62,22 @@
 
       call readinput(fname)
 
-!--- count rods
+!--- count rods and expand hex map
 
-      nrod=1   ! center
-      do i=2, irodside
-        nrod=nrod+(i-1)*6
-      enddo
+      call expand_hex_map(nrod)
 
-      write (*,*) 'number of rows of rods              ', irodside
-      write (*,*) 'total number of rods in problem     ', nrod
+      write (*,*) 'number of rows of rods  ', irodside
+      write (*,*) 'total number of rods    ', nrod
 
-      write (*,*) 'total hexagon area                  ', 6.0d0*totedge*totedge*0.25d0*sqrt(3.0d0)
-      write (*,*) 'single rod area                     ', pi*rfuel*rfuel
+      write (*,*) 'total hexagon area      ', 6.0d0*totedge*totedge*0.25d0*sqrt(3.0d0)
+      write (*,*) 'single rod area         ', pi*rfuel*rfuel
+
+!--- calculate rod coordinates
 
       allocate (rodxy(2,nrod))
-      allocate (rodtype(nrod))
       rodxy(:,:)=10000.0d0
-      rodtype(:)=0
 
-      call hexcenter(hflat, nrod, irodside, rodxy)
-
-!--- create geo file
+      call hexcenter(ppitch, nrod, irodside, rodxy)
 
 !d    write (*,*) 'list of rods:'
 !d    do i=1, nrod
@@ -106,7 +85,9 @@
 !d    enddo
 !d100 format (2i4,2f12.6)
 
-      call hexgeo(nrod, rodxy, rodtype)
+!--- create geo file
+
+      call hexgeo(nrod, rodxy)
 
       end program createhex
 
@@ -116,16 +97,14 @@
 !
 !=======================================================================
 
-      subroutine hexgeo(numrod, rodxy, rodtype)
-      use mod_input, only : fbase, rfuel, rinner, totedge, apitch
+      subroutine hexgeo(numrod, rodxy)
+      use mod_input, only : fbase, rfuel, rinner, totedge, apitch, matclad, matbox, matcool, hexmap
       implicit none
 
       integer, intent(in) :: numrod   ! total number of rods
       real(8), intent(in) :: rodxy(2,numrod)  ! center coordinates
-      integer, intent(in) :: rodtype(numrod)  ! rod types
 
 !--- local
-
 
       integer :: ifl=20   ! output file unit
 
@@ -135,12 +114,13 @@
       integer :: nrod     ! rod counter
 
       integer :: nc       ! pointer for center of rod
+      integer :: ibcout   ! pointer to outerBC surface
       integer :: irline   ! rod surface number
       integer :: irline1  ! rod surface number
       integer :: np1, np2, np3, np4   ! pointers
 
-      integer :: nos                    ! number of rod regions
-      integer, allocatable :: nsave(:)  ! save rod regions to define final coolant region
+      integer :: nos                    ! number of rod outer surfaces
+      integer, allocatable :: nsave(:)  ! save rod outer surface to define final coolant region
 
       real(8) :: xc, yc
       real(8) :: rad1, rad0
@@ -204,7 +184,7 @@
         nc=np  ! save rod center point
         write (ifl,130) nc, xc, yc
 
-! inside fuel
+! inner fuel region
 
         if (rad0.gt.0.0d0) then    ! check if inner region
           write (ifl,*)
@@ -272,14 +252,17 @@
         if (irline1.gt.0) then
           ir=ir+1
           write (ifl,160) ir, irline1
-          write (ifl,230) nrod, ir    ! physical surface of last rod
+!old      write (ifl,230) nrod, ir    ! physical surface of last rod
+          write (ifl,240) hexmap(nrod), nrod, ir    ! physical surface of last rod
           ir=ir+1
           write (ifl,162) ir, irline, irline1
-          write (ifl,232) nrod, ir    ! physical surface of last rod
+!old      write (ifl,232) nrod, ir    ! physical surface of last rod
+          write (ifl,242) matclad, nrod, ir    ! physical surface of last rod
         else
           ir=ir+1
           write (ifl,160) ir, irline
-          write (ifl,230) nrod, ir    ! physical surface of last rod
+!old      write (ifl,230) nrod, ir    ! physical surface of last rod
+          write (ifl,240) hexmap(nrod), nrod, ir    ! physical surface of last rod
         endif
 
 !-------------------------------------------------------------------
@@ -287,8 +270,12 @@
 
   160 format ('  Plane Surface(',i0,') = {',i0,'};      // fuel region')
   162 format ('  Plane Surface(',i0,') = {',i0,",",i0,'};  // clad region')
-  230 format ('  Physical Surface("RegFuel',i3.3,'")={',i0,'};')
-  232 format ('  Physical Surface("RegClad',i3.3,'")={',i0,'};')
+!o230 format ('  Physical Surface("RegFuel',i3.3,'")={',i0,'};')
+!o232 format ('  Physical Surface("RegClad',i3.3,'")={',i0,'};')
+!o260 format ('  Physical Surface("RegCool")={',i0,'};')
+  240 format ('  Physical Surface("Mat',i3.3,'Fuel',i3.3,'")={',i0,'};')
+  242 format ('  Physical Surface("Mat',i3.3,'Clad',i3.3,'")={',i0,'};')
+  244 format ('  Physical Surface("Mat',i3.3,'Cool")={',i0,'};')
 
       write (ifl,'(/,a)') '//===================================================='
       write (ifl,'(a)')   '//  Define outer hex surface'
@@ -311,7 +298,7 @@
       write (ifl,130) np, totedge*0.5d0,-apitch*0.5d0
 
       ir=ir+1
-      irline=ir   ! save for outerbc
+      ibcout=ir   ! save for outerbc
       write (ifl,142) ir, np1,   np1+1   ! line
       ir=ir+1
       write (ifl,142) ir, np1+1, np1+2   ! line
@@ -346,16 +333,14 @@
           write (ifl,254) nsave(j)
       endif
 
-      write (ifl,260) ir
+!o    write (ifl,260) ir
+      write (ifl,244) matcool, ir
 
-! 240 format ('  Line Loop(',i0,')={',10(i0,','))
-!x244 format ('  Physical Line("CoolBnd")={',i0,',')
   246 format ('  Physical Line("OutBC")={',i0,5(',',i0),'};')
   250 format ('  Plane Surface(',i0,')={',10(i0,','))
   255 format ('  Plane Surface(',i0,')={',i0,'};')
   252 format (i0,',')
   254 format (i0,'};')
-  260 format ('  Physical Surface("RegCool")={',i0,'};')
 
       write (ifl,*)
 
@@ -367,7 +352,7 @@
 
   ! the physical line has to be list of lines, not a line loop
 
-      write (ifl,246) irline, irline+1, irline+2, irline+3, irline+4, irline+5
+      write (ifl,246) ibcout, ibcout+1, ibcout+2, ibcout+3, ibcout+4, ibcout+5
 
 !--- close file
 
@@ -375,6 +360,8 @@
 
       write (*,'(3a)') ' finished writing geo file: ',trim(fbase),'.geo'
       write (*,'(3a)') ' gmsh ',trim(fbase), '.geo -format msh22 -2'
+      write (*,'(3a)') ' ./msh2vtk.exe ',trim(fbase),'.msh'
+
 
       return
       end subroutine hexgeo

@@ -59,7 +59,8 @@
       integer, allocatable :: isurf2(:)  ! (nnode)   rod surface number
       integer, allocatable :: imesh1(:)  ! (nelem)   region numbers
       integer, allocatable :: imesh2(:)  ! (nelem)
-      integer, allocatable :: imesh4(:)  ! (nelem)   region types (calculated from names)
+      integer, allocatable :: imesh4(:)  ! (nelem)   region types (calculated from names) regtyp
+      integer, allocatable :: imesh5(:)  ! (nelem)   material num (calculated from names) matnum
 
       character(len=7)   :: c7
       character(len=20)  :: csurf1
@@ -137,6 +138,13 @@
 !       2 6 "RegFuel"
 !       $EndPhysicalNames
 !
+!       1 256 "OutBC"
+!       2 1 "RegFuel001"
+!       2 2 "RegClad001"
+!       2 3 "RegFuel002"
+!       2 4 "RegClad002"
+!       2 5 "RegFuel003"
+!
 !  if type=1 - 1D - surface names
 !  if type=2 - 2D - region  names
 
@@ -148,7 +156,7 @@
 
       write (*,'(2a)') 'reading section: ', trim(line)
       read (12,*) nname   ! number of names (regions or surfaces)
-      write (*,*) 'nname =', nname
+      write (*,*) 'Number of names     nname =', nname
 
       allocate (inametype(nname))  ! region type
       allocate (inamenum(nname))   ! region number
@@ -167,6 +175,7 @@
       read (12,'(a)') line
       if (line.ne.'$EndPhysicalNames') then
         write (0,'(2a)') 'read: ', trim(line)
+        write (0,'(2a)') 'expecting: $EndPhysicalNames'
         stop 'invalid section ending'
       endif
 
@@ -401,15 +410,18 @@
 
 !--- define region types (hardwired to names)
 
+      write (*,*)
       write (*,*) 'Hardwired region numbers'
       write (*,*) ' 1 = RegFuel'
       write (*,*) ' 2 = RegClad'
       write (*,*) ' 3 = RegCool'
 
-      allocate (imesh4(nelem))
+      allocate (imesh4(nelem))   ! region type
+      allocate (imesh5(nelem))   ! material numbers
       imesh4(:)=0
+      imesh5(:)=0
       do i=1, nelem
-        j=imesh1(i)   ! region number, need to find region in list
+        j=imesh1(i)   ! internal region number, need to find region in list
         kk=inumtoj(imesh1(i))   ! convert name number to stored number
         c7=cname(kk)(1:7)
         if     (c7.eq.'RegFuel') then
@@ -418,6 +430,9 @@
           imesh4(i)=2
         elseif (c7.eq.'RegCool') then
           imesh4(i)=3
+        endif
+        if (c7(1:3).eq.'Mat') then
+          read (c7(4:6),*) imesh5(i)
         endif
 !       write (*,*) 'element ', i, kk, imesh4(i)
       enddo
@@ -441,6 +456,7 @@
       call vtk_tri2(22, nelem, imesh1, 'region', 'e')  ! elem data
       call vtk_tri2(22, nelem, imesh2, 'geom_entity', ' ')
       call vtk_tri2(22, nelem, imesh4, 'regtype', ' ')
+      call vtk_tri2(22, nelem, imesh5, 'matnum',  ' ')
       close (22)
 
 !--- write to binary mesh file
