@@ -18,15 +18,10 @@
 !  5. Run the "msh2vtk" utility to convert to VTK
 !
 !  Usage:
-!    createtri [nedge] {irodside}
+!    createtri [input]
 !
-!  where:
-!    [nedge]    is the number of hex edges (flat to flat) on the boundary (length)
-!               the center is always a half rod, so integer values will give you
-!                 half rods on far boundary.
-!    {irodside} is the number of rods along one side (partial or full) (integer) (optional)
-!
-!  Usage Notes:
+!-----------------------------------------------------------------------
+!  GMSH Notes:
 !   * You have to export to version 2 msh file, the new version is 4 and doesn't work
 !        They added a lot of new information to version 4
 !   * GMSH will export a VTK file, but it is only the mesh.  It doesn't contain material info.
@@ -44,6 +39,7 @@
 !    Another tricky part is building up all the lines on the outer boundary,
 !       which does include the boundary rods
 !
+!-----------------------------------------------------------------------
 !  Future work:
 !    1. Reading user input instead of hardwired geometry values
 !    2. Input rod maps to have different rod sizes
@@ -219,7 +215,7 @@
 !=======================================================================
 
       subroutine trigeo(numrod, rodxy, rodtype)
-      use mod_input, only : fbase, rfuel, iffull, irodside, totedge
+      use mod_input, only : fbase, rfuel, rinner, iffull, irodside, totedge
       implicit none
 
       integer, intent(in) :: numrod   ! total number of rods
@@ -238,6 +234,7 @@
 
       integer :: nc       ! pointer for center of rod
       integer :: irline   ! rod surface number
+      integer :: irline1  ! rod surface number
       integer :: np1, np2, np3, np4   ! pointers
       integer :: npstart              ! pointers
 
@@ -250,7 +247,7 @@
       integer, allocatable :: boundlines(:)  ! save boundary lines for final outer boundary
 
       real(8) :: xc, yc
-      real(8) :: rad1
+      real(8) :: rad1, rad0
 
 !--- initialize
 
@@ -303,10 +300,13 @@
         xc=rodxy(1,nrod)
         yc=rodxy(2,nrod)
 
-        rad1=rfuel  ! fuel rod   ! look up rod sizes here
+        rad1=rfuel       ! outer fuel rod   ! look up rod sizes here
+        rad0=rinner      ! inner fuel rod   ! look up rod sizes here
 
         irline=0
+        irline1=0
 
+!-------------------------------------------------------------------
         if (rodtype(nrod).eq.1) then   ! top corner rod sixth
 
           write (ifl,120) nrod, 'upper partial rod'
@@ -314,6 +314,33 @@
           np=np+1
           nc=np  ! save rod center
           write (ifl,130) np, xc, yc
+
+!  inner region
+
+!         if (rad0.gt.0.0d0) then
+!         np=np+1
+!         np1=np  ! save
+!         npstart=np  ! save starting point of boundary
+!         write (ifl,130) np, xc+rad0*0.5d0, yc-rad0*0.5d0*sqrt(3.0d0)  ! right point on curve
+!         np=np+1
+!         np2=np  ! save
+!         write (ifl,130) np, xc-rad0*0.5d0, yc-rad0*0.5d0*sqrt(3.0d0)  ! left point on curve
+
+!         ir=ir+1
+!         write (ifl,140) ir, np1, nc, np2    ! fuel circles
+!         ir=ir+1
+!         write (ifl,142) ir, np2, nc         ! line
+!         ir=ir+1
+!         write (ifl,142) ir, nc, np1         ! line
+
+!         ir=ir+1
+!         irline1=ir
+!         write (ifl,152) irline1, ir-3, ir-2, ir-1, 'rod surface'
+
+!         endif
+
+!  outer region
+
           np=np+1
           np1=np  ! save
           npstart=np  ! save starting point of boundary
@@ -340,6 +367,7 @@
           irline=ir
           write (ifl,152) irline, ir-3, ir-2, ir-1, 'rod surface'
 
+!-------------------------------------------------------------------
         elseif (rodtype(nrod).eq.2) then     ! lower left corner sixth rod
 
           write (ifl,120) nrod, 'lower left partial rod'
@@ -347,6 +375,35 @@
           np=np+1
           nc=np  ! save rod center
           write (ifl,130) np, xc, yc
+
+!  inner region
+
+!         if (rad0.gt.0.0d0) then
+!         np=np+1
+!         np1=np  ! save
+!         write (ifl,130) np, xc+rad0*0.5d0, yc+rad0*0.5d0*sqrt(3.0d0)   ! top point on curve
+!         np=np+1
+!         np2=np  ! save
+!         write (ifl,130) np, xc+rad0, yc      ! bottom point on curve
+
+!         ir=ir+1
+!         write (ifl,142) ir, lastbpt, np1  ! boundary line between rods
+!         ir=ir+1
+!         write (ifl,142) ir, nc, np1          ! line
+!         ir=ir+1
+!         write (ifl,140) ir, np1, nc, np2     ! circle arc
+!         ir=ir+1
+!         write (ifl,142) ir, np2, nc          ! line
+!         nbound=nbound+1
+!         boundlines(nbound)=-ir    ! save outer boundary
+
+!         ir=ir+1
+!         irline1=ir
+!         write (ifl,152) irline1, ir-3, ir-2, ir-1, 'surface for partial rod'
+
+!         endif
+
+!  outer region
 
           np=np+1
           np1=np  ! save
@@ -380,6 +437,7 @@
           irline=ir
           write (ifl,152) irline, ir-3, ir-2, ir-1, 'surface for partial rod'
 
+!-------------------------------------------------------------------
         elseif (rodtype(nrod).eq.3) then   ! lower right corner rod sixth
 
           write (ifl,120) nrod, 'lower right partial rod'
@@ -419,6 +477,7 @@
           irline=ir
           write (ifl,152) irline, ir-3, ir-2, ir-1, 'rod surface'
 
+!-------------------------------------------------------------------
         elseif (rodtype(nrod).eq.5) then
 
           write (ifl,120) nrod, 'bottom row half rod'
@@ -465,6 +524,7 @@
           irline=ir
           write (ifl,150) irline, ir-4, ir-3, ir-2, ir-1, 'fuel rod surface'
 
+!-------------------------------------------------------------------
         elseif (rodtype(nrod).eq.6) then
 
           write (ifl,120) nrod, 'right edge half rod'
@@ -511,6 +571,7 @@
           irline=ir
           write (ifl,150) irline, ir-4, ir-3, ir-2, ir-1, 'fuel rod surface'
 
+!-------------------------------------------------------------------
         elseif (rodtype(nrod).eq.4) then
 
           write (ifl,120) nrod, 'left edge half rod'
@@ -557,6 +618,7 @@
           irline=ir
           write (ifl,150) irline, ir-4, ir-3, ir-2, ir-1, 'fuel rod surface'
 
+!-------------------------------------------------------------------
         else    ! standard rod
 
           write (ifl,120) nrod, 'full'
@@ -564,6 +626,42 @@
           np=np+1
           nc=np  ! save rod center point
           write (ifl,130) nc, xc, yc
+
+! inside fuel
+
+          if (rad0.gt.0.0d0) then    ! check if inner region
+          write (ifl,*)
+          np=np+1
+          np1=np  ! save
+          write (ifl,130) np, xc-rad0, yc      ! left point on curve
+          np=np+1
+          np2=np  ! save
+          write (ifl,130) np, xc, yc+rad0      ! top  point on curve
+          np=np+1
+          np3=np  ! save
+          write (ifl,130) np, xc+rad0, yc      ! right point on curve
+          np=np+1
+          np4=np  ! save
+          write (ifl,130) np, xc, yc-rad0      ! bott  point on curve
+
+          ir=ir+1
+          write (ifl,140) ir, np1, nc, np2     ! fuel circles
+          ir=ir+1
+          write (ifl,140) ir, np2, nc, np3
+          ir=ir+1
+          write (ifl,140) ir, np3, nc, np4
+          ir=ir+1
+          write (ifl,140) ir, np4, nc, np1
+
+          ir=ir+1
+          irline1=ir
+          write (ifl,150) irline1, ir-4, ir-3, ir-2, ir-1, 'inside fuel rod surface'
+          write (ifl,*)
+
+          endif  ! rad0
+
+! outer clad or fuel region
+
           np=np+1
           np1=np  ! save
           write (ifl,130) np, xc-rad1, yc      ! left point on curve
@@ -594,10 +692,20 @@
           nsave(nos)=irline   ! save rod loop line to define coolant
 
         endif
+!-------------------------------------------------------------------
 
-        ir=ir+1
-        write (ifl,160) ir, irline
-        write (ifl,230) nrod, ir    ! physical surface of last rod
+        if (irline1.gt.0) then
+          ir=ir+1
+          write (ifl,160) ir, irline1
+          write (ifl,230) nrod, ir    ! physical surface of last rod
+          ir=ir+1
+          write (ifl,162) ir, irline, irline1
+          write (ifl,232) nrod, ir    ! physical surface of last rod
+        else
+          ir=ir+1
+          write (ifl,160) ir, irline
+          write (ifl,230) nrod, ir    ! physical surface of last rod
+        endif
 
 !--- write straight boundary on right side of triangle iffull
 !      just wrote last rod on lower boundary
@@ -636,7 +744,9 @@
       enddo
 
   160 format ('  Plane Surface(',i0,') = {',i0,'};      // fuel region')
+  162 format ('  Plane Surface(',i0,') = {',i0,",",i0,'};  // clad region')
   230 format ('  Physical Surface("RegFuel',i3.3,'")={',i0,'};')
+  232 format ('  Physical Surface("RegClad',i3.3,'")={',i0,'};')
 
 !--- write outer box
 

@@ -13,7 +13,8 @@
 
       real(8) :: xedge=4.5d0     ! number of hexes across edge of triangle
       real(8) :: hflat=1.60d0    ! hexagon flat to flat distance (each pin)
-      real(8) :: rfuel=0.706d0   ! radius of fuel rod
+      real(8) :: rinner=0.0d0    ! radius of fuel pellet  (0=no inner region)
+      real(8) :: rfuel=0.706d0   ! radius of outer fuel rod
       real(8) :: totedge         ! total length of one side of triangle
       real(8) :: apitch          ! total assembly pitch (flat to flat) (optional)
 
@@ -89,6 +90,11 @@
         elseif (card.eq.'hflat') then
           read (line,*) card, hflat
 
+!> name: rinner
+!> description: radius of inner fuel pellet
+        elseif (card.eq.'rinner') then
+          read (line,*) card, rinner
+
 !> name: rfuel
 !> description: radius of fuel rod
         elseif (card.eq.'rfuel') then
@@ -120,6 +126,7 @@
 
       write (*,20) 'xedge ', xedge
       write (*,20) 'hflat ', hflat
+      write (*,20) 'rinner', rinner
       write (*,20) 'rfuel ', rfuel
       write (*,24) 'irodside  ', irodside
    20 format (2x,a,f12.5)

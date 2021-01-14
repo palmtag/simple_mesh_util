@@ -2,7 +2,8 @@
 xedge  6.5       # number of rods along edge
 hflat  1.275     # single rod hex pitch (newt input is half this)
 apitch 15.422432 # assembly hex pitch   (newt input is half this)
-rfuel 0.455      # rod outer diameter
+rinner 0.38      # inner fuel pellet radius
+rfuel  0.455     # rod outer diameter
 
 rodmap
         9
