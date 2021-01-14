@@ -11,7 +11,7 @@ FFLAGS = -O2 -fbacktrace -Wall -fbounds-check
 .SUFFIXES : .f90 .o
 
 
-default: msh2vtk.exe createlat.exe createtri.exe
+default: msh2vtk.exe createlat.exe createtri.exe createhex.exe
 
 msh2vtk.exe: Mod_vtklib3.o writemesh.o msh2vtk.o
 	$(FC) $(FFLAGS) $^ -o $@
@@ -20,6 +20,9 @@ createlat.exe: createlat.o
 	$(FC) $(FFLAGS) $^ -o $@
 
 createtri.exe: createtri.o Mod_input.o
+	$(FC) $(FFLAGS) $^ -o $@
+
+createhex.exe: createhex.o Mod_input.o hexcenter.o
 	$(FC) $(FFLAGS) $^ -o $@
 
 Mod_vtklib3.o: ../meshlib/Mod_vtklib3.f90
@@ -32,7 +35,8 @@ writemesh.o: ../meshlib/writemesh.f90
 	$(FC) $(FFLAGS) -c $*.f90
 
 clean:
-	rm -f core *.o *.mod msh2vtk.exe createlat.exe createtri.exe
+	rm -f core *.o *.mod msh2vtk.exe createlat.exe createtri.exe createhex.exe
 
 createtri.o: Mod_input.o
+createhex.o: Mod_input.o
 

@@ -12,7 +12,7 @@
       integer :: irodside=0      ! calculated if not input
 
       real(8) :: xedge=4.5d0     ! number of hexes across edge of triangle
-      real(8) :: hflat=1.60d0    ! hexagon flat to flat distance (each pin)
+      real(8) :: hflat=1.60d0    ! hexagon flat to flat distance (each pin) (also pin pitch)
       real(8) :: rinner=0.0d0    ! radius of fuel pellet  (0=no inner region)
       real(8) :: rfuel=0.706d0   ! radius of outer fuel rod
       real(8) :: totedge         ! total length of one side of triangle
@@ -30,6 +30,7 @@
       character(len=200) :: fbase    ! base input file name without suffix
 
 !  "hflat" is equivalent to Newt "hexprism" times 2
+!  "hflat" is also the pin pitch
 
    contains
 !=======================================================================
@@ -86,7 +87,7 @@
           read (line,*) card, irodside
 
 !> name: hflat
-!> description: rod hexagon flat to flat distance
+!> description: rod hexagon flat to flat distance (pin pitch)
         elseif (card.eq.'hflat') then
           read (line,*) card, hflat
 
