@@ -265,13 +265,13 @@
             if (.not.(i.eq.j .and. mm.eq.6)) then
               n=n+1
               hexmap(n)=irodmap(kr+i-1)
-              write (*,*) 'debug: row, n, hexmap(n) ', j, n, hexmap(n), mm
+!d            write (*,*) 'debug: row, n, hexmap(n) ', j, n, hexmap(n), mm
             endif
           enddo
           n=n-1
         enddo
         n=n+1
-        write (*,*) 'debug:'
+!d      write (*,*) 'debug:'
       enddo
 
       write (*,*) 'final n ', n

@@ -63,7 +63,7 @@
       integer, allocatable :: imesh5(:)  ! (nelem)   material num (calculated from names) matnum
 
       character(len=7)   :: c7
-      character(len=20)  :: csurf1
+      character(len=20)  :: csurf1   ! OutBC
       character(len=100) :: line
       character(len=100) :: fname, fvtk, fmesh
 
@@ -258,7 +258,7 @@
       allocate (gg(iorder,nelx))
       allocate (imesh1(nelx))   ! tag1 - region numbers
       allocate (imesh2(nelx))   ! tag2 - surface
-      allocate (isurf1(nnode))
+      allocate (isurf1(nnode))  ! OutBC
       allocate (isurf2(nnode))
       isurf1(:)=0
       isurf2(:)=0
@@ -442,6 +442,38 @@
       deallocate (inumtoj)
       deallocate (cname)
 
+!--- edits
+
+      write (*,*)
+      write (*,*) trim(csurf1)
+      call kminmax(nnode, isurf1)
+      write (*,*)
+      write (*,*) 'RodSurface'
+      call kminmax(nnode, isurf2)
+      write (*,*)
+      write (*,*) 'Region/hexnum'
+      call kminmax(nelem, imesh1)
+      write (*,*)
+      write (*,*) 'geom_entity'
+      call kminmax(nelem, imesh2)
+      write (*,*)
+      write (*,*) 'regtype'
+      call kminmax(nelem, imesh4)
+      write (*,*)
+      write (*,*) 'material'
+      call kminmax(nelem, imesh5)
+
+!--- convert arrays to Lupine format
+
+      if (csurf1.eq.'OutBC') then
+        csurf1='bc'
+        do i=1, nnode
+          if (isurf1(i).gt.0) isurf1(i)=3
+        enddo
+      else
+        write (*,*) 'WARNING: OutBC not found'
+      endif
+
 !--- write to VTK file
 
       fvtk=trim(fname)//'.vtk'
@@ -452,19 +484,18 @@
       open (22,file=fvtk)
       call vtk_tri1(22, nnode, nelem, iorder, xi, gg)
       call vtk_tri2(22, nnode, isurf1, trim(csurf1),  'n')  ! nodal data
-      call vtk_tri2(22, nnode, isurf2, 'surf2',  ' ')
-      call vtk_tri2(22, nelem, imesh1, 'region', 'e')  ! elem data
-      call vtk_tri2(22, nelem, imesh2, 'geom_entity', ' ')
-      call vtk_tri2(22, nelem, imesh4, 'regtype', ' ')
-      call vtk_tri2(22, nelem, imesh5, 'matnum',  ' ')
+      call vtk_tri2(22, nnode, isurf2, 'RodSurface',  ' ')
+      call vtk_tri2(22, nelem, imesh1, 'hexnum',      'e')  ! elem data  ! was "region"
+!x    call vtk_tri2(22, nelem, imesh2, 'geom_entity', ' ')
+!x    call vtk_tri2(22, nelem, imesh4, 'regtype', ' ')
+      call vtk_tri2(22, nelem, imesh5, 'material',' ')
       close (22)
 
 !--- write to binary mesh file
 
-      fmesh=trim(fname)//'.mesh'
-      write (*,'(/,2a)') ' creating binary mesh file: ', trim(fmesh)
-
-      call writemesh(fmesh, nnode, nelem, xi, gg, imesh1, isurf1)
+!     fmesh=trim(fname)//'.mesh'
+!     write (*,'(/,2a)') ' creating binary mesh file: ', trim(fmesh)
+!     call writemesh(fmesh, nnode, nelem, xi, gg, imesh1, isurf1)
 
 !--- finish
 
@@ -475,6 +506,37 @@
       deallocate (imesh4)
       end
 
+!=======================================================================
+!
+!  Subroutine to find min/max values
+!
+!=======================================================================
+      subroutine kminmax(nsize, idata)
+      implicit none
+      integer, intent(in) :: nsize
+      integer, intent(in) :: idata(nsize)
+
+      integer :: i, kmin, kmax, izero
+      real(8) :: xave
+
+      xave=0.0d0
+      izero=0   ! number of zeros
+
+      kmin=idata(1)
+      kmax=idata(1)
+      do i=1, nsize
+        kmin=min(kmin,idata(i))
+        kmax=max(kmax,idata(i))
+        xave=xave+dble(idata(i))
+        if (idata(i).eq.0) izero=izero+1
+      enddo
+      xave=xave/dble(nsize)
+      write (*,*) '  min = ', kmin
+      write (*,*) '  ave = ', xave
+      write (*,*) '  max = ', kmax
+      write (*,*) '  number of zeros ', izero,' of ', nsize
+      return
+      end subroutine kminmax
 !=======================================================================
 !
 !  Function to calculate area of triangle given three coordinates

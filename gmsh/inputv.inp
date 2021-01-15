@@ -5,23 +5,25 @@ apitch 15.422432 / assembly hex pitch   (newt input is half this)
 rinner 0.38      / inner fuel pellet radius
 rfuel  0.455     / rod outer diameter
 
-matclad 13   / clad material number
-matbox  8    / outer box material number
-matcool 23   / coolant material number
+matclad 5    / clad material number
+matbox  6    / outer box material number
+matcool 7    / coolant material number
 
-#  2 3.6%
-#  3 4.0%
-#  5 4.6%
-#  6 4.0% / 3.35% gad
-# 23 water rod  (should have different radius)
+# 1  2 3.6%
+# 2  3 4.0%
+# 3  5 4.6%
+# 4  6 4.0% / 3.35% gad
+# 5 13 clad
+# 6  8 outer clad
+# 7 23 water
 
 rodmap
-       23
-       5 5
-      5 5 5
-     5 5 5 5
-    5 5 5 5 5
-   6 5 5 5 5 6
-  2 3 3 3 3 3 2 /   fuel material numbers
+        7
+       3 3
+      3 3 3
+     3 3 3 3
+    3 3 3 3 3
+   4 3 3 3 3 4
+  1 2 2 2 2 2 1 /   fuel material numbers
 
 
