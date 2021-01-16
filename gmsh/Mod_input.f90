@@ -13,26 +13,22 @@
       integer :: matbox          ! outer box material number
       integer :: matcool         ! coolant material number
 
+      logical :: ifsquare        ! hex or square problem?
+
       real(8) :: ppitch=1.60d0   ! ppitch
-!     real(8) :: rinner=0.0d0    ! radius of fuel pellet  (0=no inner region)
-!     real(8) :: rfuel=0.706d0   ! radius of outer fuel rod
-      real(8) :: totedge         ! total length of one side of triangle
+      real(8) :: triedge         ! length of one side of triangle
       real(8) :: apitch          ! total assembly pitch (flat to flat) (optional)
-
-      logical :: iffull          ! flag if pins on bottom row are full or half
-
-      integer, private, parameter :: maxrod=600
-      integer, private :: irodmap(maxrod)
-      logical, private :: ifrodmap
-      integer, private :: nrodmap
-
-      character(len=4), private :: crodmap(maxrod)
 
       integer, allocatable :: hexmap(:)
 
       real(8), parameter :: sqrt3=sqrt(3.0d0)
 
       character(len=200) :: fbase    ! base input file name without suffix
+
+!  internal
+
+      integer, private :: nrodmap
+      integer, allocatable, private :: irodmap(:)
 
 !  "ppitch" is equivalent to Newt "hexprism" times 2
 
@@ -49,7 +45,6 @@
       end type pintype_type
       type(pintype_type) :: pintype(maxpintype)
 
-
    contains
 !=======================================================================
 !
@@ -65,9 +60,15 @@
 
       integer :: linp=22    ! input unit number
       integer :: i, j, k, n
+      logical :: ifrodmap
 
       integer :: itmp(maxring)
       real(8) :: xtmp(maxring)
+
+      real(8) :: xlen
+
+      integer, parameter :: maxrod=600
+      character(len=4)   :: crodmap(maxrod)
 
       character(len=4)   :: ctmp
       character(len=12)  :: card
@@ -75,13 +76,16 @@
 
 !--- initialize
 
+!d    write (0,*) 'trace: start input'
+
       apitch=-100.0d0
-      totedge=-100.0d0
+      triedge=-100.0d0
 
       matbox =0
       matcool=0
 
-      irodmap=0
+      ifsquare=.false.
+
       crodmap=' '
       ifrodmap=.false.
       nrodmap=0   ! number of rods in map
@@ -115,26 +119,38 @@
         if     (card.eq.'nrow') then
           read (line,*) card, irodside
 
+!> name: square
+!> description: number of rods along one side
+        elseif (card.eq.'square') then
+          read (line,*) card
+          ifsquare=.true.
+
 !> name: ppitch
 !> description: pin pitch
         elseif (card.eq.'ppitch') then
           read (line,*) card, ppitch
 
-
 !> name: apitch
 !> description: total hex pitch (flat to flat)
+!> note: use either "apitch" or "triedge", but not both
         elseif (card.eq.'apitch') then
           read (line,*) card, apitch
 
+!> name: triedge
+!> description: length of edge of inner triangle
+!> note: use either "apitch" or "triedge", but not both
+        elseif (card.eq.'triedge') then
+          read (line,*) card, triedge
+
 !> name: pinrad
-!> description: pin radii for a single pin type
+!> description: list of pin radii for a single pin type
         elseif (card.eq.'pinrad') then
           xtmp=-100.0d0
           read (line,*) card, ctmp, xtmp(:)
           call fill_pinrad(ctmp, xtmp)
 
 !> name: pinmat
-!> description: pin materials for a single pin type
+!> description: list of pin materials for a single pin type
         elseif (card.eq.'pinmat') then
           itmp=-100
           read (line,*) card, ctmp, itmp(:)
@@ -181,88 +197,135 @@
 
 !--- write input
 
-      write (*,20) 'ppitch ', ppitch
+      if (ifsquare) write (*,*) 'This is a SQUARE problem'
+
       write (*,24) 'nrow      ', irodside
       write (*,24) 'matbox    ', matbox, ' material outer box'
       write (*,24) 'matcool   ', matcool,' material coolant'
    20 format (2x,a,f12.5)
    24 format (2x,a,1x,i0,2x,a)
 
-      if (apitch.le.0.0d0 .and. totedge.le.0.0d0) then
-        stop 'either apitch or totedge must be entered'
-      endif
-
-      if (apitch.gt.0.0d0 .and. totedge.lt.0.0d0) then    ! input
-        totedge=apitch/sqrt3
-      elseif (apitch.lt.0.0d0 .and. totedge.gt.0.0d0) then    ! input
-        apitch=totedge*sqrt3
+      if (apitch.gt.0.0d0 .and. triedge.lt.0.0d0) then
+        triedge=apitch/sqrt3
+      elseif (apitch.lt.0.0d0 .and. triedge.gt.0.0d0) then
+        apitch=triedge*sqrt3
       else
-        stop 'totedge and apitch cannot both be used'
+        write (*,*) 'user must enter either "apitch" or "triedge", but not both'
+        stop 'triedge and apitch cannot both be used'
       endif
 
+      write (*,20) 'ppitch ', ppitch
       write (*,20) 'apitch ', apitch
-      write (*,20) 'totedge', totedge
+      write (*,20) 'triedge', triedge
 
-      write (*,*)
-      write (*,*) ' pin pitch                              ', ppitch
       write (*,*) ' assembly pitch (flat to flat)          ', apitch
-      write (*,*) ' total length on one side of triangle   ', totedge
+      write (*,*) ' total length on one side of triangle   ', triedge
       write (*,*)
+
+! the assembly pitch could be a little smaller,
+! it depends on size of rods on outside border
+! this check is conservative
+      if (ifsquare) then
+        if (apitch.lt.irodside*ppitch) then
+          write (0,*) 'assembly pitch is too small'
+          write (0,*) 'apitch must be at least ', irodside*ppitch
+          stop 'assembly pitch too small'
+        endif
+      else
+        xlen=(dble(irodside)-0.5d0)*ppitch
+        if (triedge.lt.xlen) then
+          write (0,*) 'assembly pitch is too small'
+          write (0,*) 'triedge must be at least ', xlen
+          stop 'assembly pitch too small'
+        endif
+      endif
+
+      if (matcool.le.0) then
+        stop 'invalid matcool'
+      endif
 
 !--- pin types
 
-      do i=1, npintype
-        associate (pp => pintype(i))
-          write (*,*) 'pinrad ', pp%pname, (pp%pinrad(j),j=1,pp%nring)
-          write (*,*) 'pinmat ', pp%pname, (pp%pinmat(j),j=1,pp%nring)
-        end associate
-      enddo
-
-!--- calculate number of rods in problem
-
-      iffull=.true.
-      if (irodside.eq.0) then    ! calculate size, was not input
-!       if (abs(xedge - nint(xedge)).lt.0.001) then    ! whole number, so half pin on bottom
-!         iffull=.false.
-!         write (*,*) 'bottom row is split rods'
-!         irodside=nint(xedge)+1
-!       elseif (abs(xedge+0.0001d0 - int(xedge)).ge.0.5d0) then   ! fraction, so full pin on bottom + possible gap
-!         write (*,*) 'bottom row is full rods'
-!         irodside=int(xedge)+1
-!       else
-!         stop 'invalid xedge fraction - fraction must be zero or greater than 0.5'
-!       endif
-        stop '***** need new way to calculate iffull for triangles *****'
+      if (npintype.le.0) then
+        stop 'no pin descriptions have been entered in input'
       endif
 
-      if (ifrodmap) then
-        write (*,*)
-        write (*,*) 'input rod map:'
-        n=0
-        do i=1, irodside
-           k=irodside-i+1   ! skip
-           do j=1, k
-             write (*,'(2x)',advance='no')
-           enddo
-           write (*,40) (crodmap(n+j),j=1,i)
-           do j=1, i
-             if (crodmap(n+j).eq.' ') stop 'zero found in pin map'
-           enddo
-           n=n+i
-        enddo
-        nrodmap=n
-        if (crodmap(n+1).ne.' ') stop 'too many entries on rodmap'
-        write (*,*) 'number of rods in map = ', nrodmap
-        write (*,*)
+      do i=1, npintype
+        associate (pp => pintype(i))
+          write (*,120) pp%pname, (pp%pinrad(j),j=1,pp%nring)
+          write (*,125) pp%pname, (pp%pinmat(j),j=1,pp%nring)
+        end associate
+      enddo
+  120 format ('  pinrad ', a, 50f9.5)
+  125 format ('  pinmat ', a, 50(i6,3x))
 
+!--- calculate number of rods in problem triangle
+
+      if (ifsquare) then
+        nrodmap=irodside*irodside   ! number of rods in square
+
+        if (ifrodmap) then
+          write (*,*)
+          write (*,*) 'input rod map:'
+          n=0
+          do i=1, irodside
+             write (*,44) (crodmap(n+j),j=1,irodside)
+             do j=1, irodside
+               if (crodmap(n+j).eq.' ') stop 'zero found in pin map'
+             enddo
+             n=n+irodside
+          enddo
+          if (n.ne.nrodmap) stop 'invalid pin map size'
+          if (crodmap(n+1).ne.' ') stop 'too many entries on rodmap'
+          write (*,*) 'number of rods in map = ', nrodmap
+          write (*,*)
+        endif
+  44  format (4x,50a4)
+
+      else
+
+!--- calculate number of rods in problem triangle
+
+        nrodmap=1   ! number of rods in triangle map, not in hex
+        do i=2, irodside
+          nrodmap=nrodmap+i
+        enddo
+
+        if (ifrodmap) then
+          write (*,*)
+          write (*,*) 'input rod map:'
+          n=0
+          do i=1, irodside
+             k=irodside-i+1   ! skip
+             do j=1, k
+               write (*,'(2x)',advance='no')
+             enddo
+             write (*,40) (crodmap(n+j),j=1,i)
+             do j=1, i
+               if (crodmap(n+j).eq.' ') stop 'zero found in pin map'
+             enddo
+             n=n+i
+          enddo
+          if (n.ne.nrodmap) stop 'invalid pin map size'
+          if (crodmap(n+1).ne.' ') stop 'too many entries on rodmap'
+          write (*,*) 'number of rods in map = ', nrodmap
+          write (*,*)
+        endif
+
+      endif   ! square check
+
+  40  format (50a4)
+
+!--- fill irodmap
+
+      allocate (irodmap(nrodmap))
+      if (ifrodmap) then
         do i=1, nrodmap
           irodmap(i)=find_pintype(crodmap(i),0)
         enddo
-
       else
-        irodmap=1    ! default
+        irodmap(:)=1    ! default to first pin type entered
       endif
-  40  format (50a4)
 
 !--- finished
 
@@ -284,7 +347,7 @@
       integer :: i, j, n, mm
       integer :: kr
 
-!--- count rods
+!--- count rods in hexagon
 
       nrod=1   ! center
       do i=2, irodside
@@ -294,7 +357,7 @@
       allocate (hexmap(nrod))
       hexmap(:)=0
 
-!--- fill map
+!--- fill map - expand triangle input map into hexagon map
 
       n=1
       hexmap(n)=irodmap(1)
@@ -322,8 +385,34 @@
       write (*,*) 'nrod    ', nrod
       if (n.ne.nrod) stop 'nrod error in expand_hex_map'
 
+      deallocate (irodmap)
+
       return
       end subroutine expand_hex_map
+!=======================================================================
+      subroutine expand_square_map(nrod)
+      implicit none
+
+      integer, intent(out) :: nrod
+
+      integer :: n
+
+!--- count rods in square
+
+      nrod=irodside*irodside
+
+      allocate (hexmap(nrod))
+      hexmap(:)=0
+
+      do n=1, nrod
+        hexmap(n)=irodmap(n)
+      enddo
+
+      deallocate (irodmap)
+
+      return
+      end subroutine expand_square_map
+
 !=======================================================================
       subroutine fill_pinmat(ctmp, itmp)
       implicit none

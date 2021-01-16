@@ -1,0 +1,45 @@
+#  LWR Sample problem
+square /    square problem, not hex
+nrow    17   / number of rows of rods along one edge
+ppitch  1.26 / rod pitch
+apitch 21.54 / assembly pitch
+
+matcool 7    / coolant material number
+
+pinrad A 0.418 0.475 /
+pinrad B 0.418 0.475 /
+pinrad W 0.561 0.602 / guide rod
+
+# Material List:
+# 1  2 3.6%
+# 2  3 4.0%
+# 3  5 4.6%
+# 4  6 4.0% / 3.35% gad
+# 5 13 clad
+# 6  8 outer clad
+# 7 23 water
+
+pinmat A 2 5 /
+pinmat B 1 5 /
+pinmat W 7 5 /  water rod
+
+rodmap
+  B B A A A A A A A A A A A A A B B 
+  B A A A A A A A A A A A A A A A B 
+  A A A A A W A A W A A W A A A A A 
+  A A A W A A A A A A A A A W A A A 
+  A A A A A A A A A A A A A A A A A 
+  A A W A A W A A W A A W A A W A A 
+  A A A A A A A A A A A A A A A A A 
+  A A A A A A A A A A A A A A A A A 
+  A A W A A W A A W A A W A A W A A 
+  A A A A A A A A A A A A A A A A A 
+  A A A A A A A A A A A A A A A A A 
+  A A W A A W A A W A A W A A W A A 
+  A A A A A A A A A A A A A A A A A 
+  A A A W A A A A A A A A A W A A A 
+  A A A A A W A A W A A W A A A A A 
+  B A A A A A A A A A A A A A A A B 
+  B B A A A A A A A A A A A A A B B  / fuel type map
+
+

@@ -7,7 +7,8 @@
 !
 !  Scott Palmtag
 !  2019-11-15 - original version for triangles
-!  2020-01-14 - convert to hex geometry
+!  2020-01-14 - convert to hex geometry and read from input file
+!  2020-01-16 - add option to create square geometry
 !
 !  1. Run this program to generate ".geo" files
 !  2. Load ".geo" file into GMSH
@@ -26,9 +27,8 @@
 !
 !-----------------------------------------------------------------------
 !  Future work:
-!    1. Input rod maps to have different rod sizes
-!    2. Investigate - it does not look like gmsh preserves the rod area?
-!    3. Add channel box (boxth) and outer gap
+!    1. Investigate - it does not look like gmsh preserves the rod area?
+!    2. Add channel box (boxth) and outer gap
 !
 !=======================================================================
 
@@ -60,23 +60,35 @@
 
 !--- read input
 
+      write (0,*) 'trace: call readinput from main'
+
       call readinput(fname)
 
 !--- count rods and expand hex map
 
-      call expand_hex_map(nrod)
+      write (0,*) 'trace: call expand_hex_map from main'
+
+      if (ifsquare) then
+        call expand_square_map(nrod)
+      else
+        call expand_hex_map(nrod)
+      endif
 
       write (*,*) 'number of rows of rods  ', irodside
       write (*,*) 'total number of rods    ', nrod
 
-      write (*,*) 'total hexagon area      ', 6.0d0*totedge*totedge*0.25d0*sqrt(3.0d0)
+!d    write (*,*) 'total hexagon area      ', 6.0d0*triedge*triedge*0.25d0*sqrt(3.0d0)
 
 !--- calculate rod coordinates
 
       allocate (rodxy(2,nrod))
       rodxy(:,:)=10000.0d0
 
-      call hexcenter(ppitch, nrod, irodside, rodxy)
+      if (ifsquare) then
+        call squarecenter(apitch, ppitch, nrod, irodside, rodxy)
+      else
+        call hexcenter(ppitch, nrod, irodside, rodxy)
+      endif
 
 !d    write (*,*) 'list of rods:'
 !d    do i=1, nrod
@@ -97,7 +109,7 @@
 !=======================================================================
 
       subroutine hexgeo(numrod, rodxy)
-      use mod_input, only : fbase, pintype, totedge, apitch, matbox, matcool, hexmap
+      use mod_input, only : fbase, pintype, triedge, apitch, matbox, matcool, hexmap, ifsquare
       implicit none
 
       integer, intent(in) :: numrod   ! total number of rods
@@ -151,8 +163,6 @@
       write (ifl,'(a)') 'General.BackgroundGradient=0; '
       write (ifl,'(a)') 'General.Color.Background={63,255,50};'
 
-!--- loop over each fuel rod
-
   130 format ('  Point(',i0,') = {',f12.8,',',f12.8,', 0, lc};')
 
   ! circles are defined with circle arcs - input start point, center, end point
@@ -165,7 +175,7 @@
   120 format (/,'//==============================', &
               /,'//  Define rod ',i0,/)
 
-!--- write rod data
+!--- loop over rods
 
       do nrod=1, numrod
 
@@ -185,7 +195,7 @@
 
         irline1=0   ! previous ring
 
-! inner fuel region
+!    loop over rings in fuel rod
 
         do kring=1, pintype(iptype)%nring
 
@@ -235,8 +245,8 @@
 
         enddo  ! kring
 
-!-------------------------------------------------------------------
       enddo    ! loop over rods
+!-------------------------------------------------------------------
 
   160 format ('  Plane Surface(',i0,') = {',i0,'};      // rod ring ',i0)
   162 format ('  Plane Surface(',i0,') = {',i0,",",i0,'};  // rod ring ',i0)
@@ -246,42 +256,75 @@
   240 format ('  Physical Surface("Mat',i3.3,'R',i3.3,'K',i1,'")={',i0,'};')
   244 format ('  Physical Surface("Mat',i3.3,'Cool")={',i0,'};')
 
-      write (ifl,'(/,a)') '//===================================================='
-      write (ifl,'(a)')   '//  Define outer hex surface'
-      write (ifl,*)
+      if (ifsquare) then
 
-      xc=0.0d0    ! define outer channel box
-      yc=0.0d0
-      np=np+1
-      np1=np  ! save spp
-      write (ifl,130) np, totedge, yc   ! corner of hex
-      np=np+1
-      write (ifl,130) np, totedge*0.5d0, apitch*0.5d0
-      np=np+1
-      write (ifl,130) np,-totedge*0.5d0, apitch*0.5d0
-      np=np+1
-      write (ifl,130) np,-totedge, yc
-      np=np+1
-      write (ifl,130) np,-totedge*0.5d0,-apitch*0.5d0
-      np=np+1
-      write (ifl,130) np, totedge*0.5d0,-apitch*0.5d0
+        write (ifl,'(/,a)') '//===================================================='
+        write (ifl,'(a)')   '//  Define outer square surface'
+        write (ifl,*)
 
-      ir=ir+1
-      ibcout=ir   ! save for outerbc
-      write (ifl,142) ir, np1,   np1+1   ! line
-      ir=ir+1
-      write (ifl,142) ir, np1+1, np1+2   ! line
-      ir=ir+1
-      write (ifl,142) ir, np1+2, np1+3   ! line
-      ir=ir+1
-      write (ifl,142) ir, np1+3, np1+4   ! line
-      ir=ir+1
-      write (ifl,142) ir, np1+4, np1+5   ! line
-      ir=ir+1
-      write (ifl,142) ir, np1+5, np1     ! line
+        xc=0.0d0    ! define outer channel box
+        yc=0.0d0
+        np=np+1
+        np1=np   ! save
+        write (ifl,130) np, xc,        yc
+        np=np+1
+        write (ifl,130) np, xc+apitch, yc
+        np=np+1
+        write (ifl,130) np, xc+apitch, yc+apitch
+        np=np+1
+        write (ifl,130) np, xc,        yc+apitch
 
-      ir=ir+1
-      write (ifl,154) ir, ir-6, ir-5, ir-4, ir-3, ir-2, ir-1
+        ir=ir+1
+        ibcout=ir   ! save for outerbc
+        write (ifl,142) ir, np1,   np1+1   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+1, np1+2   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+2, np1+3   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+3, np1     ! line
+
+        ir=ir+1
+        write (ifl,150) ir, ir-4, ir-3, ir-2, ir-1
+
+      else
+        write (ifl,'(/,a)') '//===================================================='
+        write (ifl,'(a)')   '//  Define outer hex surface'
+        write (ifl,*)
+
+        xc=0.0d0    ! define outer channel box
+        yc=0.0d0
+        np=np+1
+        np1=np  ! save
+        write (ifl,130) np, triedge, yc   ! corner of hex
+        np=np+1
+        write (ifl,130) np, triedge*0.5d0, apitch*0.5d0
+        np=np+1
+        write (ifl,130) np,-triedge*0.5d0, apitch*0.5d0
+        np=np+1
+        write (ifl,130) np,-triedge, yc
+        np=np+1
+        write (ifl,130) np,-triedge*0.5d0,-apitch*0.5d0
+        np=np+1
+        write (ifl,130) np, triedge*0.5d0,-apitch*0.5d0
+
+        ir=ir+1
+        ibcout=ir   ! save for outerbc
+        write (ifl,142) ir, np1,   np1+1   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+1, np1+2   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+2, np1+3   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+3, np1+4   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+4, np1+5   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+5, np1     ! line
+
+        ir=ir+1
+        write (ifl,154) ir, ir-6, ir-5, ir-4, ir-3, ir-2, ir-1
+      endif
 
       nos=nos+1
       nsave(nos)=ir       ! save outer loop line
@@ -306,7 +349,6 @@
 !o    write (ifl,260) ir
       write (ifl,244) matcool, ir
 
-  246 format ('  Physical Line("OutBC")={',i0,5(',',i0),'};')
   250 format ('  Plane Surface(',i0,')={',10(i0,','))
   255 format ('  Plane Surface(',i0,')={',i0,'};')
   252 format (i0,',')
@@ -322,7 +364,13 @@
 
   ! the physical line has to be list of lines, not a line loop
 
-      write (ifl,246) ibcout, ibcout+1, ibcout+2, ibcout+3, ibcout+4, ibcout+5
+      if (ifsquare) then
+        write (ifl,334) ibcout, ibcout+1, ibcout+2, ibcout+3
+      else
+        write (ifl,330) ibcout, ibcout+1, ibcout+2, ibcout+3, ibcout+4, ibcout+5
+      endif
+  330 format ('  Physical Line("OutBC")={',i0,5(',',i0),'};')  ! 6 pts
+  334 format ('  Physical Line("OutBC")={',i0,3(',',i0),'};')  ! 4 pts
 
 !--- close file
 

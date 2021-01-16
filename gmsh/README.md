@@ -8,6 +8,7 @@
 
 ## createhex sample cases
 * vver.vtk  use "./createhex.exe inputv.inp"
+* pwr.vtk   use "./createhex.exe inputpwr.inp"
 
 ## createtri sample cases
 * trilat3.vtk  use "./createtri.exe 3"      (3 hex edges)

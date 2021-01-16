@@ -101,3 +101,55 @@
       return
       end subroutine hexcenter
 
+!=======================================================================
+!
+!  Subroutine to calculate rod centers in square assembly
+!
+!=======================================================================
+      subroutine squarecenter(apitch, ppitch, nrod, nrow, rodxy)
+      implicit none
+      integer, intent(in)  :: nrod    ! total number of rods
+      integer, intent(in)  :: nrow    ! number of rows of rods
+      real(8), intent(in)  :: apitch  ! assembly pitch
+      real(8), intent(in)  :: ppitch  ! pin pitch
+      real(8), intent(out) :: rodxy(2,nrod)
+
+      integer :: mm, i, j
+      real(8) :: xc, yc
+      real(8) :: gap2
+
+!-----------------------------
+
+      write (*,*)
+      write (*,*) 'calculating rod centers in square assembly'
+
+      rodxy(:,:)=0.0d0
+
+!d    write(*,*) 'pin pitch ', ppitch
+!d    write(*,*) 'nrod   ', nrod
+!d    write(*,*) 'nrow   ', nrow
+
+      if (nrod.ne.nrow*nrow) stop 'invalid nrod size in squarecenter'
+
+!  zero is in lower left corner
+
+      gap2=(apitch-nrow*ppitch)*0.5d0   ! half gap size
+      if (abs(gap2).lt.0.00001d0) gap2=0.0d0   ! fix roundoff
+      if (gap2.lt.0.0d0) stop 'invalid gap size'
+    
+      mm=0 
+      yc=gap2+ppitch*0.5d0
+      do j=1, nrow 
+        xc=gap2+ppitch*0.5d0
+        do i=1, nrow 
+           mm=mm+1
+           rodxy(1,mm)=xc
+           rodxy(2,mm)=yc 
+           xc=xc+ppitch
+        enddo
+        yc=yc+ppitch
+      enddo
+
+      return
+      end subroutine squarecenter
+
