@@ -1,14 +1,18 @@
 #  VVER Sample problem based on Newt3
-xedge  6.5       / number of rods along edge
+nrow     7       / number of rows of rods from center out
 ppitch 1.275     / rod pitch
 apitch 15.422432 / assembly hex pitch   (newt input is half this)
-rinner 0.38      / inner fuel pellet radius
-rfuel  0.455     / rod outer diameter
 
-matclad 5    / clad material number
 matbox  6    / outer box material number
 matcool 7    / coolant material number
 
+pinrad A 0.06 0.38 0.455 /
+pinrad B 0.06 0.38 0.455 /
+pinrad C 0.06 0.38 0.455 /
+pinrad G 0.06 0.38 0.455 / gad rod
+pinrad W      0.55 0.620 / water rod
+
+# Material List:
 # 1  2 3.6%
 # 2  3 4.0%
 # 3  5 4.6%
@@ -17,13 +21,23 @@ matcool 7    / coolant material number
 # 6  8 outer clad
 # 7 23 water
 
+# Annular region should be gas, not water!!
+# gap region not included.
+# gap radius should be 0.386 and make clad smaller
+
+pinmat A 7 1 5 /  annular fuel pins
+pinmat B 7 2 5 /
+pinmat C 7 3 5 /
+pinmat G 7 4 5 /  gad rod
+pinmat W 7   5 /  water rod
+
 rodmap
-        7
-       3 3
-      3 3 3
-     3 3 3 3
-    3 3 3 3 3
-   4 3 3 3 3 4
-  1 2 2 2 2 2 1 /   fuel material numbers
+        W
+       C C
+      C C C
+     C C C C
+    C C C C C
+   G C C C C G
+  A B B B B B A /   fuel type map
 
 

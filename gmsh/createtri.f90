@@ -98,7 +98,6 @@
       write (*,*) 'total number of rods in problem     ', nrod
 
       write (*,*) 'total triangle area                  ', totedge*totedge*0.25d0*sqrt(3.0d0)
-      write (*,*) 'single rod area                      ', pi*rfuel*rfuel
 
       allocate (rodxy(2,nrod))
       allocate (rodtype(nrod))
@@ -214,7 +213,7 @@
 !=======================================================================
 
       subroutine trigeo(numrod, rodxy, rodtype)
-      use mod_input, only : fbase, rfuel, rinner, iffull, irodside, totedge
+      use mod_input, only : fbase, pintype, iffull, irodside, totedge
       implicit none
 
       integer, intent(in) :: numrod   ! total number of rods
@@ -299,8 +298,8 @@
         xc=rodxy(1,nrod)
         yc=rodxy(2,nrod)
 
-        rad1=rfuel       ! outer fuel rod   ! look up rod sizes here
-        rad0=rinner      ! inner fuel rod   ! look up rod sizes here
+        rad1=pintype(1)%pinrad(2)    ! outer fuel rod   ! look up rod sizes here
+        rad0=pintype(1)%pinrad(1)    ! inner fuel rod   ! look up rod sizes here
 
         irline=0
         irline1=0

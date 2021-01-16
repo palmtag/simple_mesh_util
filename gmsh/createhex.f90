@@ -70,7 +70,6 @@
       write (*,*) 'total number of rods    ', nrod
 
       write (*,*) 'total hexagon area      ', 6.0d0*totedge*totedge*0.25d0*sqrt(3.0d0)
-      write (*,*) 'single rod area         ', pi*rfuel*rfuel
 
 !--- calculate rod coordinates
 
@@ -98,7 +97,7 @@
 !=======================================================================
 
       subroutine hexgeo(numrod, rodxy)
-      use mod_input, only : fbase, rfuel, rinner, totedge, apitch, matclad, matbox, matcool, hexmap
+      use mod_input, only : fbase, pintype, totedge, apitch, matbox, matcool, hexmap
       implicit none
 
       integer, intent(in) :: numrod   ! total number of rods
@@ -112,6 +111,8 @@
       integer :: np       ! point number
       integer :: ir       ! region number
       integer :: nrod     ! rod counter
+      integer :: iptype   ! pin type
+      integer :: kring    ! ring loop
 
       integer :: nc       ! pointer for center of rod
       integer :: ibcout   ! pointer to outerBC surface
@@ -123,7 +124,7 @@
       integer, allocatable :: nsave(:)  ! save rod outer surface to define final coolant region
 
       real(8) :: xc, yc
-      real(8) :: rad1, rad0
+      real(8) :: rad0
 
 !--- initialize
 
@@ -152,18 +153,17 @@
 
 !--- loop over each fuel rod
 
-  120 format (/,'// ==============================', &
-              /,'//    define rod ',i0,1x,a/)
-
   130 format ('  Point(',i0,') = {',f12.8,',',f12.8,', 0, lc};')
 
   ! circles are defined with circle arcs - input start point, center, end point
   140 format ('  Circle(',i0,') = {',i0,',',i0,',',i0,'};')
   142 format ('  Line(',i0,') = {',i0,',',i0,'};')
 
-  150 format ('  Line Loop(',i0,') = {',i0,3(',',i0),'};   // ',a)  ! 4 pts
-! 152 format ('  Line Loop(',i0,') = {',i0,2(',',i0),'};   // ',a)  ! 3 pts
-  154 format ('  Line Loop(',i0,') = {',i0,5(',',i0),'};   // ',a)  ! 6 pts
+  150 format ('  Line Loop(',i0,') = {',i0,3(',',i0),'};',a)  ! 4 pts
+  154 format ('  Line Loop(',i0,') = {',i0,5(',',i0),'};',a)  ! 6 pts
+
+  120 format (/,'//==============================', &
+              /,'//  Define rod ',i0,/)
 
 !--- write rod data
 
@@ -172,21 +172,25 @@
         xc=rodxy(1,nrod)
         yc=rodxy(2,nrod)
 
-        rad1=rfuel       ! outer fuel rod   ! look up rod sizes here
-        rad0=rinner      ! inner fuel rod   ! look up rod sizes here
+        iptype=hexmap(nrod)
 
         irline=0
         irline1=0
 
-        write (ifl,120) nrod, 'full'
+        write (ifl,120) nrod
 
         np=np+1
         nc=np  ! save rod center point
         write (ifl,130) nc, xc, yc
 
+        irline1=0   ! previous ring
+
 ! inner fuel region
 
-        if (rad0.gt.0.0d0) then    ! check if inner region
+        do kring=1, pintype(iptype)%nring
+
+          rad0=pintype(iptype)%pinrad(kring)
+
           write (ifl,*)
           np=np+1
           np1=np  ! save
@@ -211,70 +215,35 @@
           write (ifl,140) ir, np4, nc, np1
 
           ir=ir+1
-          irline1=ir
-          write (ifl,150) irline1, ir-4, ir-3, ir-2, ir-1, 'inside fuel rod surface'
-          write (ifl,*)
+          irline=ir
+          write (ifl,150) irline, ir-4, ir-3, ir-2, ir-1
 
-        endif  ! rad0
+          if (kring.eq.pintype(iptype)%nring) then
+            nos=nos+1
+            nsave(nos)=irline   ! save outer rod loop line to define coolant
+          endif
 
-! outer clad or fuel region
-
-        np=np+1
-        np1=np  ! save
-        write (ifl,130) np, xc-rad1, yc      ! left point on curve
-        np=np+1
-        np2=np  ! save
-        write (ifl,130) np, xc, yc+rad1      ! top  point on curve
-        np=np+1
-        np3=np  ! save
-        write (ifl,130) np, xc+rad1, yc      ! right point on curve
-        np=np+1
-        np4=np  ! save
-        write (ifl,130) np, xc, yc-rad1      ! bott  point on curve
-
-        ir=ir+1
-        write (ifl,140) ir, np1, nc, np2     ! fuel circles
-        ir=ir+1
-        write (ifl,140) ir, np2, nc, np3
-        ir=ir+1
-        write (ifl,140) ir, np3, nc, np4
-        ir=ir+1
-        write (ifl,140) ir, np4, nc, np1
-
-        ir=ir+1
-        irline=ir
-        write (ifl,150) irline, ir-4, ir-3, ir-2, ir-1, 'fuel rod surface'
-
-        nos=nos+1           ! only save full rods, not partial rods on boundary
-        nsave(nos)=irline   ! save rod loop line to define coolant
-
-
-        if (irline1.gt.0) then
           ir=ir+1
-          write (ifl,160) ir, irline1
-!old      write (ifl,230) nrod, ir    ! physical surface of last rod
-          write (ifl,240) hexmap(nrod), nrod, ir    ! physical surface of last rod
-          ir=ir+1
-          write (ifl,162) ir, irline, irline1
-!old      write (ifl,232) nrod, ir    ! physical surface of last rod
-          write (ifl,242) matclad, nrod, ir    ! physical surface of last rod
-        else
-          ir=ir+1
-          write (ifl,160) ir, irline
-!old      write (ifl,230) nrod, ir    ! physical surface of last rod
-          write (ifl,240) hexmap(nrod), nrod, ir    ! physical surface of last rod
-        endif
+          if (irline1.eq.0) then   ! inside ring
+            write (ifl,160) ir, irline, kring
+            write (ifl,240) pintype(iptype)%pinmat(kring), nrod, kring, ir
+          else
+            write (ifl,162) ir, irline, irline1, kring
+            write (ifl,240) pintype(iptype)%pinmat(kring), nrod, kring, ir
+          endif
+          irline1=irline  ! save for next ring
+
+        enddo  ! kring
 
 !-------------------------------------------------------------------
       enddo    ! loop over rods
 
-  160 format ('  Plane Surface(',i0,') = {',i0,'};      // fuel region')
-  162 format ('  Plane Surface(',i0,') = {',i0,",",i0,'};  // clad region')
+  160 format ('  Plane Surface(',i0,') = {',i0,'};      // rod ring ',i0)
+  162 format ('  Plane Surface(',i0,') = {',i0,",",i0,'};  // rod ring ',i0)
 !o230 format ('  Physical Surface("RegFuel',i3.3,'")={',i0,'};')
 !o232 format ('  Physical Surface("RegClad',i3.3,'")={',i0,'};')
 !o260 format ('  Physical Surface("RegCool")={',i0,'};')
-  240 format ('  Physical Surface("Mat',i3.3,'Fuel',i3.3,'")={',i0,'};')
-  242 format ('  Physical Surface("Mat',i3.3,'Clad',i3.3,'")={',i0,'};')
+  240 format ('  Physical Surface("Mat',i3.3,'R',i3.3,'K',i1,'")={',i0,'};')
   244 format ('  Physical Surface("Mat',i3.3,'Cool")={',i0,'};')
 
       write (ifl,'(/,a)') '//===================================================='
@@ -312,13 +281,14 @@
       write (ifl,142) ir, np1+5, np1     ! line
 
       ir=ir+1
-      write (ifl,154) ir, ir-6, ir-5, ir-4, ir-3, ir-2, ir-1, 'outer hex surface'
+      write (ifl,154) ir, ir-6, ir-5, ir-4, ir-3, ir-2, ir-1
 
       nos=nos+1
       nsave(nos)=ir       ! save outer loop line
 
       write (ifl,'(/,a)') '//===================================================='
       write (ifl,'(a)')   '//  Define coolant region and label'
+      write (ifl,*)
 
       ir=ir+1  ! surface
       if (nos.eq.1) then    ! special case for small problem
@@ -347,7 +317,7 @@
 !--- write outer boundary of problem (boundary conditions)
 
       write (ifl,'(/,a)') '//===================================================='
-      write (ifl,'(  a)') '//  define outer boundary of problem'
+      write (ifl,'(  a)') '//  Define outer boundary of problem'
       write (ifl,*)
 
   ! the physical line has to be list of lines, not a line loop
