@@ -20,10 +20,15 @@
       integer :: ia, k
       character(len=100) :: fname
 
+      logical :: ifxst
+
       ia=iargc()
       if (ia.eq.0) stop 'usage: vtk2svg [file.vtk]'
 
       call getarg(1,fname)
+
+      inquire (file=fname,exist=ifxst)
+      if (.not.ifxst) stop 'input file does not exist'
 
       call readvtk(fname)
 
