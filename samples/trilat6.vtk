@@ -30018,7 +30018,7 @@ CELL_TYPES 11938
 5
 
 POINT_DATA 6132
-SCALARS OutBC float
+SCALARS OutBC int
 LOOKUP_TABLE default
 30
 30
@@ -36152,7 +36152,7 @@ LOOKUP_TABLE default
 0
 0
 0
-SCALARS surf2 float
+SCALARS surf2 int
 LOOKUP_TABLE default
 3
 183
@@ -42288,7 +42288,7 @@ LOOKUP_TABLE default
 0
 
 CELL_DATA 11938
-SCALARS region float
+SCALARS material int
 LOOKUP_TABLE default
 1
 1
@@ -54228,7 +54228,7 @@ LOOKUP_TABLE default
 29
 29
 29
-SCALARS geom_entity float
+SCALARS geom_entity int
 LOOKUP_TABLE default
 5
 5
@@ -66168,7 +66168,7 @@ LOOKUP_TABLE default
 185
 185
 185
-SCALARS regtype float
+SCALARS regtype int
 LOOKUP_TABLE default
 1
 1
