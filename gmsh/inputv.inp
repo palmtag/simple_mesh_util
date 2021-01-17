@@ -2,6 +2,8 @@
 nrow     7       / number of rows of rods from center out
 ppitch 1.275     / rod pitch
 apitch 15.422432 / assembly hex pitch   (newt input is half this)
+bsize  15.142432 / channel box size (flat to flat)
+boxth   0.21     / channel box thickness
 
 matbox  6    / outer box material number
 matcool 7    / coolant material number

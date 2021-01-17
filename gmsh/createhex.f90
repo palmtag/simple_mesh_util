@@ -9,6 +9,7 @@
 !  2019-11-15 - original version for triangles
 !  2020-01-14 - convert to hex geometry and read from input file
 !  2020-01-16 - add option to create square geometry
+!  2020-01-16 - add option to create channel box (boxth and bsize)
 !
 !  1. Run this program to generate ".geo" files
 !  2. Load ".geo" file into GMSH
@@ -28,7 +29,6 @@
 !-----------------------------------------------------------------------
 !  Future work:
 !    1. Investigate - it does not look like gmsh preserves the rod area?
-!    2. Add channel box (boxth) and outer gap
 !
 !=======================================================================
 
@@ -109,7 +109,7 @@
 !=======================================================================
 
       subroutine hexgeo(numrod, rodxy)
-      use mod_input, only : fbase, pintype, triedge, apitch, matbox, matcool, hexmap, ifsquare
+      use mod_input, only : fbase, pintype, apitch, matbox, matcool, hexmap, ifsquare, sqrt3, boxth, bsize
       implicit none
 
       integer, intent(in) :: numrod   ! total number of rods
@@ -128,6 +128,7 @@
 
       integer :: nc       ! pointer for center of rod
       integer :: ibcout   ! pointer to outerBC surface
+      integer :: irout    ! outer surface number
       integer :: irline   ! rod surface number
       integer :: irline1  ! rod surface number
       integer :: np1, np2, np3, np4   ! pointers
@@ -137,6 +138,8 @@
 
       real(8) :: xc, yc
       real(8) :: rad0
+      real(8) :: asize
+      real(8) :: outgap
 
 !--- initialize
 
@@ -255,24 +258,30 @@
 !o260 format ('  Physical Surface("RegCool")={',i0,'};')
   240 format ('  Physical Surface("Mat',i3.3,'R',i3.3,'K',i1,'")={',i0,'};')
   244 format ('  Physical Surface("Mat',i3.3,'Cool")={',i0,'};')
+  246 format ('  Physical Surface("Mat',i3.3,'Box")={',i0,'};')
+  248 format ('  Physical Surface("Mat',i3.3,'Gap")={',i0,'};')
+
+      irout=0    ! save outside surface
 
       if (ifsquare) then
 
         write (ifl,'(/,a)') '//===================================================='
-        write (ifl,'(a)')   '//  Define outer square surface'
+        write (ifl,'(a)')   '//  Define coolant surface for square'
         write (ifl,*)
 
-        xc=0.0d0    ! define outer channel box
-        yc=0.0d0
+        outgap=(apitch-bsize)*0.5d0+boxth   ! outer gap + channel box
+
+        asize=apitch-outgap
+
         np=np+1
         np1=np   ! save
-        write (ifl,130) np, xc,        yc
+        write (ifl,130) np, outgap, outgap
         np=np+1
-        write (ifl,130) np, xc+apitch, yc
+        write (ifl,130) np, asize,  outgap
         np=np+1
-        write (ifl,130) np, xc+apitch, yc+apitch
+        write (ifl,130) np, asize,  asize
         np=np+1
-        write (ifl,130) np, xc,        yc+apitch
+        write (ifl,130) np, outgap, asize
 
         ir=ir+1
         ibcout=ir   ! save for outerbc
@@ -286,27 +295,30 @@
 
         ir=ir+1
         write (ifl,150) ir, ir-4, ir-3, ir-2, ir-1
+        irout=ir  ! save outside surface
 
       else
         write (ifl,'(/,a)') '//===================================================='
-        write (ifl,'(a)')   '//  Define outer hex surface'
+        write (ifl,'(a)')   '//  Define coolant surface for hex'
         write (ifl,*)
 
-        xc=0.0d0    ! define outer channel box
+        asize=(bsize-2.0d0*boxth)*0.5d0
+
+        xc=0.0d0
         yc=0.0d0
         np=np+1
         np1=np  ! save
-        write (ifl,130) np, triedge, yc   ! corner of hex
+        write (ifl,130) np, asize*2.0d0/sqrt3,  yc   ! corner of hex
         np=np+1
-        write (ifl,130) np, triedge*0.5d0, apitch*0.5d0
+        write (ifl,130) np, asize/sqrt3, asize
         np=np+1
-        write (ifl,130) np,-triedge*0.5d0, apitch*0.5d0
+        write (ifl,130) np,-asize/sqrt3, asize
         np=np+1
-        write (ifl,130) np,-triedge, yc
+        write (ifl,130) np,-asize*2.0d0/sqrt3,  yc
         np=np+1
-        write (ifl,130) np,-triedge*0.5d0,-apitch*0.5d0
+        write (ifl,130) np,-asize/sqrt3,-asize
         np=np+1
-        write (ifl,130) np, triedge*0.5d0,-apitch*0.5d0
+        write (ifl,130) np, asize/sqrt3,-asize
 
         ir=ir+1
         ibcout=ir   ! save for outerbc
@@ -324,10 +336,13 @@
 
         ir=ir+1
         write (ifl,154) ir, ir-6, ir-5, ir-4, ir-3, ir-2, ir-1
+        irout=ir  ! save outside surface
       endif
 
       nos=nos+1
       nsave(nos)=ir       ! save outer loop line
+
+!--- coolant region
 
       write (ifl,'(/,a)') '//===================================================='
       write (ifl,'(a)')   '//  Define coolant region and label'
@@ -351,10 +366,195 @@
 
   250 format ('  Plane Surface(',i0,')={',10(i0,','))
   255 format ('  Plane Surface(',i0,')={',i0,'};')
+  257 format ('  Plane Surface(',i0,') = {',i0,",",i0,'};  // channel box')
+  259 format ('  Plane Surface(',i0,') = {',i0,",",i0,'};  // outer gap')
   252 format (i0,',')
   254 format (i0,'};')
 
       write (ifl,*)
+
+!--- define outer channel box if present
+
+      if (boxth.gt.0.0d0) then
+      if (ifsquare) then
+
+        write (ifl,'(/,a)') '//===================================================='
+        write (ifl,'(a)')   '//  Define outer channel box square surface'
+        write (ifl,*)
+        write (ifl,150) ir, ir-4, ir-3, ir-2, ir-1
+
+        outgap=(apitch-bsize)*0.5d0   ! outer gap
+        asize=apitch-outgap
+
+        np=np+1
+        np1=np   ! save
+        write (ifl,130) np, outgap, outgap
+        np=np+1
+        write (ifl,130) np, asize,  outgap
+        np=np+1
+        write (ifl,130) np, asize,  asize
+        np=np+1
+        write (ifl,130) np, outgap, asize
+
+        ir=ir+1
+        ibcout=ir   ! save for outerbc (overwrite previous save)
+        write (ifl,142) ir, np1,   np1+1   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+1, np1+2   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+2, np1+3   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+3, np1     ! line
+
+        ir=ir+1
+        write (ifl,150) ir, ir-4, ir-3, ir-2, ir-1
+
+        ir=ir+1
+        write (ifl,257) ir, ir-1, irout      ! plane surface for channel box
+        write (ifl,246) matbox, ir           ! physical surface
+
+        irout=ir-1  ! save new outside surface
+
+      else
+        write (ifl,'(/,a)') '//===================================================='
+        write (ifl,'(a)')   '//  Define outer channel box hex surface'
+        write (ifl,*)
+
+        asize=bsize*0.5d0
+
+        xc=0.0d0
+        yc=0.0d0
+        np=np+1
+        np1=np  ! save
+        write (ifl,130) np, asize*2.0d0/sqrt3,  yc   ! corner of hex
+        np=np+1
+        write (ifl,130) np, asize/sqrt3, asize
+        np=np+1
+        write (ifl,130) np,-asize/sqrt3, asize
+        np=np+1
+        write (ifl,130) np,-asize*2.0d0/sqrt3,  yc
+        np=np+1
+        write (ifl,130) np,-asize/sqrt3,-asize
+        np=np+1
+        write (ifl,130) np, asize/sqrt3,-asize
+
+        ir=ir+1
+        ibcout=ir   ! save for outerbc (overwrite previous save)
+        write (ifl,142) ir, np1,   np1+1   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+1, np1+2   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+2, np1+3   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+3, np1+4   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+4, np1+5   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+5, np1     ! line
+
+        ir=ir+1
+        write (ifl,154) ir, ir-6, ir-5, ir-4, ir-3, ir-2, ir-1
+
+        ir=ir+1
+        write (ifl,257) ir, ir-1, irout      ! plane surface for channel box
+        write (ifl,246) matbox, ir           ! physical surface
+
+        irout=ir-1  ! save new outside surface
+
+      endif
+      endif   ! boxth
+
+!--- outer coolant gap (if present)
+
+      if (apitch.gt.bsize) then
+      if (ifsquare) then
+
+        write (ifl,'(/,a)') '//===================================================='
+        write (ifl,'(a)')   '//  Define outer gap square surface'
+        write (ifl,*)
+        write (ifl,150) ir, ir-4, ir-3, ir-2, ir-1
+
+        asize=apitch
+
+        xc=0.0d0
+        yc=0.0d0
+        np=np+1
+        np1=np   ! save
+        write (ifl,130) np, xc,    yc
+        np=np+1
+        write (ifl,130) np, asize, yc
+        np=np+1
+        write (ifl,130) np, asize, asize
+        np=np+1
+        write (ifl,130) np, xc,    asize
+
+        ir=ir+1
+        ibcout=ir   ! save for outerbc (overwrite previous save)
+        write (ifl,142) ir, np1,   np1+1   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+1, np1+2   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+2, np1+3   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+3, np1     ! line
+
+        ir=ir+1
+        write (ifl,150) ir, ir-4, ir-3, ir-2, ir-1
+
+        ir=ir+1
+        write (ifl,259) ir, ir-1, irout      ! plane surface for channel box
+        write (ifl,248) matcool, ir          ! physical surface gap
+
+        irout=ir-1  ! save new outside surface
+
+      else
+        write (ifl,'(/,a)') '//===================================================='
+        write (ifl,'(a)')   '//  Define outer channel box hex surface'
+        write (ifl,*)
+
+        asize=apitch*0.5d0
+
+        xc=0.0d0
+        yc=0.0d0
+        np=np+1
+        np1=np  ! save
+        write (ifl,130) np, asize*2.0d0/sqrt3, yc   ! corner of hex
+        np=np+1
+        write (ifl,130) np, asize/sqrt3, asize
+        np=np+1
+        write (ifl,130) np,-asize/sqrt3, asize
+        np=np+1
+        write (ifl,130) np,-asize*2.0d0/sqrt3, yc
+        np=np+1
+        write (ifl,130) np,-asize/sqrt3,-asize
+        np=np+1
+        write (ifl,130) np, asize/sqrt3,-asize
+
+        ir=ir+1
+        ibcout=ir   ! save for outerbc (overwrite previous save)
+        write (ifl,142) ir, np1,   np1+1   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+1, np1+2   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+2, np1+3   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+3, np1+4   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+4, np1+5   ! line
+        ir=ir+1
+        write (ifl,142) ir, np1+5, np1     ! line
+
+        ir=ir+1
+        write (ifl,154) ir, ir-6, ir-5, ir-4, ir-3, ir-2, ir-1
+
+        ir=ir+1
+        write (ifl,259) ir, ir-1, irout      ! plane surface for channel box
+        write (ifl,248) matcool, ir          ! physical surface gap
+
+        irout=ir-1  ! save new outside surface
+
+      endif
+      endif   ! bsize - outergap
 
 !--- write outer boundary of problem (boundary conditions)
 

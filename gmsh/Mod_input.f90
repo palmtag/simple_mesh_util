@@ -17,7 +17,9 @@
 
       real(8) :: ppitch=1.60d0   ! ppitch
       real(8) :: triedge         ! length of one side of triangle
-      real(8) :: apitch          ! total assembly pitch (flat to flat) (optional)
+      real(8) :: apitch          ! total assembly pitch (flat to flat)
+      real(8) :: boxth           ! channel box thickness
+      real(8) :: bsize           ! outer box size (outside flat to flat)
 
       integer, allocatable :: hexmap(:)
 
@@ -80,6 +82,8 @@
 
       apitch=-100.0d0
       triedge=-100.0d0
+      boxth=0.0d0
+      bsize=-100.0d0
 
       matbox =0
       matcool=0
@@ -142,6 +146,16 @@
         elseif (card.eq.'triedge') then
           read (line,*) card, triedge
 
+!> name: boxth
+!> description: channel box thickness
+        elseif (card.eq.'boxth') then
+          read (line,*) card, boxth
+
+!> name: bsize
+!> description: channel box size (outside flat to flat)
+        elseif (card.eq.'bsize') then
+          read (line,*) card, bsize
+
 !> name: pinrad
 !> description: list of pin radii for a single pin type
         elseif (card.eq.'pinrad') then
@@ -173,18 +187,6 @@
           read (line,*) card
           read (linp,*) (crodmap(i),i=1,maxrod)
 
-        elseif (card.eq.'xedge') then
-          read (line,*) card
-          stop 'xedge card is no longer valid'
-
-        elseif (card.eq.'rinner') then
-          read (line,*) card
-          stop 'rinner is no longer valid input'
-
-        elseif (card.eq.'rfuel') then
-          read (line,*) card
-          stop 'rinner is no longer valid input'
-
         else
           write (0,   *) 'ERROR: invalid input card ', card
           stop 'invalid input card'
@@ -214,9 +216,13 @@
         stop 'triedge and apitch cannot both be used'
       endif
 
+      if (bsize.le.0.0d0) bsize=apitch   ! default no gap
+
       write (*,20) 'ppitch ', ppitch
       write (*,20) 'apitch ', apitch
       write (*,20) 'triedge', triedge
+      write (*,20) 'boxth  ', boxth
+      write (*,20) 'bsize  ', bsize
 
       write (*,*) ' assembly pitch (flat to flat)          ', apitch
       write (*,*) ' total length on one side of triangle   ', triedge
@@ -242,6 +248,9 @@
 
       if (matcool.le.0) then
         stop 'invalid matcool'
+      endif
+      if (boxth.gt.0.0d0 .and. matbox.le.0) then
+        stop 'invalid matbox when boxth specified'
       endif
 
 !--- pin types
