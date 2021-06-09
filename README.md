@@ -3,6 +3,8 @@
 
 Fortran utilities to create simple FEM meshes
 
+*** Look in samples directory to see example images ***
+
 July 2018
 
 meshlib

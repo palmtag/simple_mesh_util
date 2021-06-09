@@ -19,6 +19,7 @@
 ![tri2 image](tri2.png)
 
 * tri3 - simple square mesh from meshgen/triangle utility
+
 ![tri3 image](tri3.png)
 
 # Advanced Sample meshes
