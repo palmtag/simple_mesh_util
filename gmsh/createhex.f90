@@ -109,7 +109,8 @@
 !=======================================================================
 
       subroutine hexgeo(numrod, rodxy)
-      use mod_input, only : fbase, pintype, apitch, matbox, matcool, hexmap, ifsquare, sqrt3, boxth, bsize
+      use mod_input, only : fbase, pintype, apitch, matbox, matcool, matouter, &
+              hexmap, ifsquare, sqrt3, boxth, bsize
       implicit none
 
       integer, intent(in) :: numrod   ! total number of rods
@@ -503,13 +504,13 @@
 
         ir=ir+1
         write (ifl,259) ir, ir-1, irout      ! plane surface for channel box
-        write (ifl,248) matcool, ir          ! physical surface gap
+        write (ifl,248) matouter, ir         ! physical surface gap
 
         irout=ir-1  ! save new outside surface
 
       else
         write (ifl,'(/,a)') '//===================================================='
-        write (ifl,'(a)')   '//  Define outer channel box hex surface'
+        write (ifl,'(a)')   '//  Define outer gap hex surface'
         write (ifl,*)
 
         asize=apitch*0.5d0
@@ -549,7 +550,7 @@
 
         ir=ir+1
         write (ifl,259) ir, ir-1, irout      ! plane surface for channel box
-        write (ifl,248) matcool, ir          ! physical surface gap
+        write (ifl,248) matouter, ir         ! physical surface gap
 
         irout=ir-1  ! save new outside surface
 

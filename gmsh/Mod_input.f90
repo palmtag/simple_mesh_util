@@ -12,6 +12,7 @@
       integer :: irodside=0      ! calculated if not input
       integer :: matbox          ! outer box material number
       integer :: matcool         ! coolant material number
+      integer :: matouter        ! material of outer gap (default to matcool)
 
       logical :: ifsquare        ! hex or square problem?
 
@@ -87,6 +88,7 @@
 
       matbox =0
       matcool=0
+      matouter=-100   ! default to matcool
 
       ifsquare=.false.
 
@@ -180,6 +182,11 @@
         elseif (card.eq.'matcool') then
           read (line,*) card, matcool
 
+!> name: matouter
+!> description: material number of outer gap region (default to matcool)
+        elseif (card.eq.'matouter') then
+          read (line,*) card, matouter
+
 !> name: rodmap
 !> description: array of rod types, start on next line
         elseif (card.eq.'rodmap') then
@@ -204,6 +211,11 @@
       write (*,24) 'nrow      ', irodside
       write (*,24) 'matbox    ', matbox, ' material outer box'
       write (*,24) 'matcool   ', matcool,' material coolant'
+      if (matouter.ge.0) then
+        write (*,24) 'matouter  ', matouter,' material outer gap region'
+      else
+        matouter=matcool   ! use default value
+      endif
    20 format (2x,a,f12.5)
    24 format (2x,a,1x,i0,2x,a)
 

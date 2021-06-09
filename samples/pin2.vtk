@@ -1589,7 +1589,7 @@ CELL_TYPES 612
 5
 
 POINT_DATA 355
-SCALARS row-number float
+SCALARS row-number int
 LOOKUP_TABLE default
 1
 1
@@ -1946,7 +1946,7 @@ LOOKUP_TABLE default
 21
 21
 21
-SCALARS bc float
+SCALARS bc int
 LOOKUP_TABLE default
 0
 0
@@ -2305,7 +2305,7 @@ LOOKUP_TABLE default
 3
 
 CELL_DATA 612
-SCALARS material float
+SCALARS material int
 LOOKUP_TABLE default
 1
 1

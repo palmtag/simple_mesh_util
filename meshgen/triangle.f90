@@ -1,10 +1,15 @@
-   program helmholtz1
+   program triangle
 !=======================================================================
 !
-!  Program to write analytic solution to Helmholtz equation for
-!  Equilateral Triangle
+!  Create triangle mesh for three different triangles
+!   * 90-45-45
+!   * 90-60-30
+!   * 60-60-60
 !
-! @version CVS $Id: helmholtz1.f90,v 1.8 2017/12/14 16:49:27 scott Exp $
+!  Usage:
+!   > triangle [size]
+!
+!   where [size] is the number of points along an edge
 !
 !=======================================================================
       use mod_vtklib3
@@ -16,7 +21,6 @@
       integer :: nnode=0     ! number of nodes
       integer :: nelem=0     ! number of elements
 
-      real(8), parameter :: pi=3.1415926535897932384d0
       real(8), parameter :: root3=sqrt(3.0d0)
 
       real(8), allocatable :: xi(:,:)    ! (3,nnode)

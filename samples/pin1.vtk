@@ -1603,7 +1603,7 @@ CELL_TYPES 624
 5
 
 POINT_DATA 345
-SCALARS ring-number float
+SCALARS ring-number int
 LOOKUP_TABLE default
 0
 1
@@ -1950,7 +1950,7 @@ LOOKUP_TABLE default
 8
 8
 8
-SCALARS bc float
+SCALARS bc int
 LOOKUP_TABLE default
 0
 0
@@ -2299,7 +2299,7 @@ LOOKUP_TABLE default
 3
 
 CELL_DATA 624
-SCALARS material float
+SCALARS material int
 LOOKUP_TABLE default
 1
 1

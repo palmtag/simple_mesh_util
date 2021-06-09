@@ -1,28 +1,45 @@
    program pinmesh
 !=======================================================================
 !
-!   Program to (attempt to) draw a triangular mesh for a pincell
-!   In progress!
+!   Program to draw a uniform/symmetric triangular mesh for a pincell
 !
 !   Method 1 adds multiple rings of pins to fill out a circle
 !      The difficulty with this method is that each ring must use the same
 !      number of triangles/ring or twice the number of triangles as previous ring
-!      Method1 creates a uniform material
+!      Method 1 creates a uniform pin material - inner radius is ignored
+!      output: pin1.vtk
 !
 !   Method 2 defines a hex grid in the center of the problem, then "fills out the circle"
 !      Things to try: Is there space to add more than one hex element?  For each row
 !         check to see how far from boundary (or nearest point on circle)
 !         if greater than some criteria, connect, otherwise add mesh
 !      Method 2 will add an additional ring outside of the hex mesh to represent the clad
+!      output: pin2.vtk
 !
-!  Scott Palmtag
-!  August 2012
+!   Alternative - If you don't like these meshes, use another program to create
+!      a mesh using Delauney triangles
 !
-!   Usage:
+!=======================================================================
+!
+!  Usage:
 !      pinmesh {nring} {ndiv}
 !        nring - number of rings in method1
 !        ndiv  - number of divisions in method2 (must be multiple of 6)
 !
+!      Inner radius is hardwired to 19.0
+!      Outer radius is hardwired to 20.0
+!      (change variables rpin1 and rpin2 below)
+!
+!  Example:
+!      pinmesh 8 0      # generate pin mesh using method 1 and 8 rings
+!      pinmesh 0 48     # generate pin mesh using method 2 and 48 divisions
+!      pinmesh 8 48     # generate both pin mesh
+!
+!=======================================================================
+!
+!  Scott Palmtag
+!
+!  2012/08/01 - original
 !  2012/08/23 - method 2 (hex) is working
 !  2012/09/19 - add output to mesh file, add material and mask arrays
 !  2012/09/22 - fixed alignment of triangles in problem 1
@@ -44,7 +61,7 @@
 !  Define max size of arrays.   This isn't very elegant, but I don't have a good
 !  way to predict the final mesh size beforehand...
 
-      integer, parameter :: maxnode=10000   ! max number of nodes
+      integer, parameter :: maxnode=40000   ! max number of nodes
       integer, parameter :: maxelem=20000   ! max number of elements
 
       integer :: nelem     ! number of elements in mesh
@@ -58,7 +75,6 @@
       real(8) :: xi(3,maxnode)        !  node coordinates
       real(8) :: elarea(maxelem)      ! element area
       real(8) :: rpin1, rpin2         ! outer ring radii  rpin2>rpin1
-
 
       real(8), parameter :: pi=3.1415926535897932384d0
 
@@ -79,8 +95,8 @@
       write (*,*) 'pin radii = ', rpin1, rpin2
       write (*,*) 'clad thickness = ', rpin2-rpin1    ! only used in method 2
 
-      nring=8     ! number of rings in method1
-      ndiv=48     ! number of divisions in method2 (must be multiple of 6)
+      nring=8     ! default number of rings in method1
+      ndiv=48     ! default number of divisions in method2 (must be multiple of 6)
 
 !--- read command line
 
@@ -117,8 +133,11 @@
         write (*,*)
         write (*,*) 'final number of nodes    ', nnode
         write (*,*) 'final number of elements ', nelem
- 
+
 !--- create vtk
+
+        write (*,*)
+        write (*,*) 'creating output file: pin1.vtk'
 
         open (22,file='pin1.vtk')
         call vtk_tri1(22, nnode, nelem, 3, xi, gg)
@@ -145,6 +164,9 @@
         write (*,*) 'final number of elements ', nelem
 
 !--- create vtk
+
+        write (*,*)
+        write (*,*) 'creating output file: pin2.vtk'
 
         open (22,file='pin2.vtk')
         call vtk_tri1(22, nnode, nelem, 3, xi, gg)
@@ -386,7 +408,7 @@
         write (*,30) 'nnode ', nnode
         write (*,30) 'n1 n2 ', n1, n2, 'start/end node of outer ring'
         write (*,30) 'j1 j2 ', j1, j2, 'start of inner/outer ring'
-        write (*,30) 'ne    ', nesave, 0, 'start element number outer ring' 
+        write (*,30) 'ne    ', nesave, 0, 'start element number outer ring'
         write (*,*) '   alpha ', alpha
         write (*,*) '   actual    radius ', r1
         write (*,*) '   effective radius ', rad
@@ -419,6 +441,7 @@
 ! zero degrees is at right and move counter-clockwise (unit circle)
       do j=1, ndiv
         nnode=nnode+1
+        if (nnode.gt.maxnode) stop 'maxnode exceeded - increase and recompile'
         xi(1,nnode)=rad*cos(theta)
         xi(2,nnode)=rad*sin(theta)
         theta=theta+2.0d0*pi/dble(ndiv)
@@ -432,6 +455,7 @@
 !!   write (*,*) ' j1 j2 ', j1, j2
 
           nelem=nelem+1
+          if (nelem.gt.maxelem) stop 'maxelem exceeded - increase and recompile'
           gg(1,nelem)=j1
           gg(2,nelem)=j2     + ioff
           gg(3,nelem)=j2 + 1 + ioff
@@ -442,6 +466,7 @@
           if (gg(3,nelem).gt.n2) gg(3,nelem)=gg(3,nelem)-ndiv
 
           nelem=nelem+1
+          if (nelem.gt.maxelem) stop 'maxelem exceeded - increase and recompile'
           gg(1,nelem)=j1
           gg(2,nelem)=j2 + 1 + ioff
           gg(3,nelem)=j1 + 1
@@ -1007,7 +1032,7 @@
       write (*,*) ' old ndiv  ', ndiv
       write (*,*)
 
-      n1=ndiv       ! previous ring 
+      n1=ndiv       ! previous ring
       n2=ndiv*2     ! new      ring  (double mesh)
       call addring(n2, n1, rpin2, nnode, nelem, xi, gg, elarea, maxnode, maxelem)
 
