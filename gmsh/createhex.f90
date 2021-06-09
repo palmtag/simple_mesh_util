@@ -159,13 +159,12 @@
       write (ifl,'(a)') '//  Hexagon Mesh Generator '
       write (ifl,*)
       write (ifl,'(a)') '// set characteristic length'
-      write (ifl,'(a)') '// lc=0.05;'
-      write (ifl,'(a)') 'lc=0.1;'
-      write (ifl,*)
-      write (ifl,'(a)') 'lcb=0.05;  // characteristic length on border'
+      write (ifl,'(a)') 'lc=0.2;'
       write (ifl,*)
       write (ifl,'(a)') 'General.BackgroundGradient=0; '
       write (ifl,'(a)') 'General.Color.Background={63,255,50};'
+      write (ifl,*)
+      write (ifl,'(a)') 'Mesh.MshFileVersion = 2.2;'
 
   130 format ('  Point(',i0,') = {',f12.8,',',f12.8,', 0, lc};')
 

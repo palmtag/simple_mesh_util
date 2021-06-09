@@ -1,18 +1,38 @@
 # Triangle and Hexagonal Lattice Meshes
 
+Programs that create ".geo" files that can be read by GMSH
+
 ## Running hex generator
 
+1. First run createhex to generate ".geo" file
+
     > ./createhex.exe [input]           (generate gmsh script tri.geo)
+
+2. Next run GMSH to create a gmsh ".msh" file
+
     > gmsh input.geo -format msh22 -2   (generate gmsh mesh file tri.msh)
+
+3. Convert ".msh" file to VTK file
+
     > msh2vtk input.msh                 (convert msh file to vtk file)
 
 ## createhex sample cases
-* vver.vtk  use "./createhex.exe inputv.inp"
-* pwr.vtk   use "./createhex.exe inputpwr.inp"
+* VVER
+
+    > ./createhex.exe inputv.inp
+
+* PWR
+
+    > ./createhex.exe inputpwr.inp
 
 ## createtri sample cases
-* trilat3.vtk  use "./createtri.exe 3"      (3 hex edges)
-* trilat24.vtk use "./createtri.exe 24.8"   (24.5 pincells + gap region)
+* trilat3
+
+    > ./createtri.exe 3       (3 hex edges)
+
+* trilat24
+
+    > ./createtri.exe 24.8    (24.5 pincells + gap region)
 
 ## GMSH options
 * The "-2" specifies 2D mesh
@@ -21,6 +41,6 @@
 
 # GMSH Info
 
-* The version installed on Linux is 4.1.3 (old)
-* Latest stable release Jan 2021 is 4.7.1 - see https://gmsh.info/
+* The version installed on Linux by default is 4.1.3 (old)
+* Latest stable release Jun 2021 is 4.8.4 - see https://gmsh.info/
 

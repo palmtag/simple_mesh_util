@@ -30,6 +30,7 @@
 * trilat24 - triangle lattice from gmsh/createtri and gmsh
 
 * pwr  - PWR 17x17 mesh from gmsh/createhex and gmsh
+![PWR image](pwr.png)
 
 * vver - VVER input from gmsh/createhex and gmsh
 ![VVER image](vver.png)
