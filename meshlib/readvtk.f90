@@ -1,6 +1,16 @@
    subroutine readvtk(fname)
    use mod_trigeom
    implicit none
+!=======================================================================
+!  Subroutine to read VTK file
+!
+!  Allocates arrays to the size on the VTK file
+!
+!=======================================================================
+!
+!  @version CVS $Id: readvtk.f90,v 1.4 2021/08/12 13:33:50 palmtag Exp $
+!
+!=======================================================================
 
       character(len=*), intent(in) :: fname
 
@@ -51,10 +61,15 @@
       read (22,'(a)') line
       read (line,*) c1, nnode, c3
       if (c1.ne.'POINTS') stop 'vtk file missing keyword POINTS'
-      if (c3.ne.'float')  stop 'vtk file missing keyword float'
+      if (c3.ne.'float' .and. c3.ne.'int') stop 'vtk file missing keywords float or int'
       write (*,*) 'nnode = ', nnode
 
-      allocate (xi(3,nnode))
+      if (allocated(xi)) then
+        stop 'xi array already allocated'    ! check dimensions
+      else
+        allocate (xi(3,nnode))
+      endif
+
       read (22,*) ((xi(i,n),i=1,3),n=1,nnode)
 
 !--- read cells
@@ -75,10 +90,14 @@
       if (c1.ne.'CELLS') stop 'vtk file missing keyword CELLS'
       write (*,*) 'nelem = ', nelem
 
-      allocate (gg(iorder,nelem))
-      allocate (matelem(nelem))   ! materials
-      matelem(:)=1
-      nmat=1
+      if (allocated(gg)) then   ! check dimensions
+        stop 'gg array already allocated'
+      else
+        allocate (gg(iorder,nelem))
+        allocate (matelem(nelem))   ! materials
+        matelem(:)=1
+        nmat=1
+      endif
 
       do n=1, nelem
         read (22,*) j,(gg(i,n),i=1,iorder)

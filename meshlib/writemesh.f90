@@ -9,7 +9,7 @@
 !
 !  2015/04/27 - update xi() array to have z coordinate, but it is not used
 !
-! @version CVS $Id: writemesh.f90,v 1.3 2015/04/27 12:50:57 scott Exp $
+! @version CVS $Id: writemesh.f90,v 1.4 2020/01/29 01:35:22 palmtag Exp $
 !
 !=======================================================================
       subroutine writemesh(fname, nnode, nelem, xi, ivar, matl, mask)
@@ -23,7 +23,7 @@
       real*8,           intent(in) :: xi(3,nnode)    ! node coordinates
 
       integer     :: i
-      character*8 :: label='MESH'
+      character(len=8) :: label='MESH'
       integer     :: iver=1        ! file version number
       integer     :: norder=3      ! triangle mesh
       integer     :: ndim=2        ! 2-D
